@@ -1,5 +1,5 @@
 `timescale 1ns / 1ps
-// sw_encoder.v — sw[9:0] one-hot -> digit 0-9
+// sw_encoder.v - sw[9:0] one-hot -> digit 0-9
 // digit_valid = 1 only when exactly one of sw0-sw9 is on.
 
 module sw_encoder (
