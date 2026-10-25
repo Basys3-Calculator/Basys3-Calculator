@@ -1,4 +1,4 @@
-\- \[calc\_fsm.v]
+## [calc\_fsm.v]
 
 &#x20; Implements the calculator’s finite-state machine. It sequences through:
 
@@ -12,13 +12,13 @@
 
 
 
-\- \[calc\_oled\_test.v]
+## [calc\_oled\_test.v]
 
 &#x20; A standalone OLED test top module. It displays the hardcoded expression 5+3=8 on the first OLED row and displays the switch-selected digit on the bottom row. It is intended for testing the font renderer, OLED layout, and switch encoder before using the complete calculator.
 
 
 
-\- \[calc\_params.vh]
+## [calc\_params.vh]
 
 &#x20; A Verilog header containing shared constants:
 
@@ -28,7 +28,7 @@
 
 
 
-\- \[calc\_top.v]
+## [calc\_top.v]
 
 &#x20; The main calculator top-level module. It connects together:
 
@@ -48,13 +48,13 @@
 
 
 
-\- \[chars.vh]
+## [chars.vh]
 
 &#x20; Defines 4-bit character codes for digits 0–9, the four operators, the equals sign, and a blank space. These codes are shared by the font ROM and display logic.
 
 
 
-\- \[constraints.xdc]
+## [constraints.xdc]
 
 &#x20; Maps the Verilog ports to physical pins on the Basys3 board. It assigns pins for:
 
@@ -70,25 +70,25 @@
 
 
 
-\- \[debounce.v]
+## [debounce.v]
 
 &#x20; Filters mechanical button bouncing. It samples the button at approximately 1 ms intervals and generates a one-clock-cycle pulse when a button press is detected. It then ignores further changes for roughly 200 ms.
 
 
 
-\- \[diff\_num\_rep.v]
+## [diff\_num\_rep.v]
 
 &#x20; An empty placeholder module. It currently has no ports, logic, or functionality.
 
 
 
-\- \[font\_rom.v]
+## [font\_rom.v]
 
 &#x20; Contains 8×8 bitmap glyphs for digits, operators, the equals sign, and spaces. Given a character code and row number, it outputs the corresponding 8-bit row of pixels. The display logic scales each glyph to 16×16 pixels.
 
 
 
-\- \[Oled\_display.v]
+## [Oled\_display.v]
 
 &#x20; A reusable OLED controller for the 96×64 RGB OLED display. It:
 
@@ -106,13 +106,13 @@
 
 
 
-\- \[slow\_clock.v]
+## [slow\_clock.v]
 
 &#x20; Divides the Basys3’s 100 MHz clock down to approximately 6.25 MHz by toggling the output every eight input-clock cycles. This clock is used by the OLED controller.
 
 
 
-\- \[sw\_encoder.v]
+## [sw\_encoder.v]
 
 &#x20; Converts the first ten switches into a digit. It expects exactly one switch to be active:
 
