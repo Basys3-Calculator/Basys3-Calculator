@@ -1,5 +1,5 @@
 `timescale 1ns / 1ps
-// calc_oled_test.v — hardware test for font_rom + text layout + sw_encoder
+// calc_oled_test.v - hardware test for font_rom + text layout + sw_encoder
 //
 // Expected on the OLED (2x scaled, 6 chars x 4 rows of 16x16 cells):
 //   row 0 : 5+3=8         (hardcoded)
@@ -71,7 +71,7 @@ module calc_oled_test (
     // ---------------- OLED ----------------
     Oled_Display u_oled (
         .clk         (clk6p25m),
-        .reset       (1'b0),            // NOT btnC — btnC is the confirm button later
+        .reset       (1'b0),            // NOT btnC - btnC is the confirm button later
         .pixel_index (pixel_index),
         .pixel_data  (oled_data),
         .cs          (JB[0]),

@@ -1,5 +1,5 @@
 `timescale 1ns / 1ps
-// calc_fsm.v — input sequence: N1 -> btnC -> op -> btnC -> N2 -> btnC (evaluate)
+// calc_fsm.v - input sequence: N1 -> btnC -> op -> btnC -> N2 -> btnC (evaluate)
 //
 // Runs on the 100 MHz clock. pC / pU are 1-cycle pulses from debounce.
 // After evaluating it goes straight back to S_N1 with show_result = 1,
