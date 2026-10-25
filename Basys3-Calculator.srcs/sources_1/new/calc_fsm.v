@@ -12,44 +12,44 @@ module calc_fsm (
     input  wire       pD,
     input  wire       pL,
     input  wire       pR,
-    input  wire [3:0] digit,
+    input  wire signed [5:0] digit,
     input  wire       digit_valid,
 
     output reg  [1:0] state       = 2'd0,
-    output reg  [3:0] n1          = 4'd0,
+    output reg signed [4:0] n1    = 5'sd0,
     output reg  [1:0] op          = 2'd0,
     output reg        op_set      = 1'b0,   // an op has been picked in S_OP
-    output reg  [3:0] n2          = 4'd0,
-    output reg  [6:0] result      = 7'd0,   // 7 bits: room for 9x9 = 81 later
+    output reg signed [4:0] n2    = 5'sd0,
+    output reg signed [7:0] result      = 8'd0,   // 8 bits: room for 9x9 = 81 later and sign bit
     output reg        show_result = 1'b0
 );
     `include "calc_params.vh"
 
     // ---------------- ALU ----------------
     // Uses the live digit (not n2) so the answer is ready on the confirm cycle.
-    reg [6:0] alu_out;
+    reg signed [7:0] alu_out;
     always @(*) begin
         case (op)
             OP_ADD:  alu_out = n1 + digit;
-            OP_SUB:  alu_out = (n1 >= digit) ? (n1 - digit) : 7'd0; 
+            OP_SUB:  alu_out = n1 - digit;
             OP_MUL:  alu_out = n1 * digit;
-            OP_DIV:  alu_out = (digit != 0) ? (n1 / digit) : 7'd0; 
-            default: alu_out = 7'd0;        // SUB / MUL / DIV: not yet
+            OP_DIV:  alu_out = (digit != 0) ? (n1 / digit) : 8'sd0; 
+            default: alu_out = 7'd0;        
         endcase
     end
 
     // ---------------- FSM ----------------
     always @(posedge clk) begin
         case (state)
-            S_N1: begin
+            S_N1: begin //n1 state
                 if (pC && digit_valid) begin
-                    n1          <= digit;
+                    n1          <= digit;    // push digit to n1
                     show_result <= 1'b0;     // clear old answer from top line
-                    state       <= S_OP;
+                    state       <= S_OP;     // change to next state
                 end
             end
 
-            S_OP: begin
+            S_OP: begin //operation state
                 if (pU) begin
                     op     <= OP_ADD;
                     op_set <= 1'b1;
