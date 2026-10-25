@@ -13,7 +13,7 @@ module calc_top (
     input  wire        btnR,
     input  wire        btnD,
     input  wire [15:0] sw,
-    output wire [7:0]  JB
+    output wire [7:0]  JC
 );
     `include "chars.vh"
     `include "calc_params.vh"
@@ -141,14 +141,14 @@ module calc_top (
         .reset       (1'b0),
         .pixel_index (pixel_index),
         .pixel_data  (oled_data),
-        .cs          (JB[0]),
-        .sdin        (JB[1]),
-        .sclk        (JB[3]),
-        .d_cn        (JB[4]),
-        .resn        (JB[5]),
-        .vccen       (JB[6]),
-        .pmoden      (JB[7])
+        .cs          (JC[0]),
+        .sdin        (JC[1]),
+        .sclk        (JC[3]),
+        .d_cn        (JC[4]),
+        .resn        (JC[5]),
+        .vccen       (JC[6]),
+        .pmoden      (JC[7])
     );
-    assign JB[2] = 1'b0;
+    assign JC[2] = 1'b0;
 
 endmodule
