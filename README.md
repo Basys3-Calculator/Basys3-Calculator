@@ -1,6 +1,9 @@
 # Basy3-Calculator
 FPGA Design Project for NUS EE2026 Digital Design
 
+## Code Files
+
+Verilog, Verilog Header and Constraint Files are found in Basys3-Calculator.srcs/sources_1/new.
 
 ## Tracking the Project Files
 
