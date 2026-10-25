@@ -1,127 +1,117 @@
-# Verilog Files
+# Basys3 Calculator
 
-## [calc\_top.v]
+This directory contains the Verilog source files for the Basys3 calculator and its OLED display interface.
 
-Overall, calc\_top.v is the main design entry point. It uses sw\_encoder.v and debounce.v for inputs, calc\_fsm.v for calculator behavior, font\_rom.v and chars.vh for text generation, slow\_clock.v for timing, and Oled\_display.v to drive the OLED.
+## Operating modes
 
-&#x20; The main calculator top-level module. It connects together:
+The top-level design selects its operating mode using switches 11 and 12:
 
-&#x20; - The 100 MHz board clock
+| SW11 | SW12 | Mode |
+|---:|---:|---|
+| 0 | 0 | Mode-selection screen |
+| 1 | 0 | Normal calculator |
+| 0 | 1 | Number-representation converter |
+| 1 | 1 | Mode-conflict screen |
 
-&#x20; - Debounced buttons
+Switches 0–9 are one-hot digit inputs. Exactly one of these switches must be on at a time.
 
-&#x20; - Switch-to-digit conversion
+When both mode switches are off, the OLED displays `SELECT MODE`, `11: OPERATIONS`, and `12: NUMBER REP`. When both are on, it displays `MODE CONFLICT` and `TURN ONE OFF`. Inputs are gated by the active mode, while each mode preserves its internal state when inactive.
 
-&#x20; - The calculator FSM
+## Verilog source files
 
-&#x20; - Character/font rendering
+### `calc_top.v`
 
-&#x20; - The OLED display driver
+The main top-level module. It connects the 100 MHz clock, debounced pushbuttons, switch-to-digit encoding, both calculator modules, character rendering, and the OLED controller.
 
-&#x20; It formats the calculator state onto the OLED. The top row shows the expression or result, while the bottom row shows the currently selected digit or operator.
+It selects the active mode, converts the selected state into character codes, and generates OLED pixel data.
 
-## [calc\_fsm.v]
+Normal calculator mode uses 16×16 character cells. Number-representation mode also uses 16×16 cells:
 
-&#x20; Implements the calculator’s finite-state machine. It sequences through:
+- The label appears near the top.
+- The confirmed value appears below the label.
+- Long binary values wrap onto the next row.
+- The currently selected switch digit appears once near the bottom while entering a number.
 
-&#x20; 1. Enter first number (S\_N1)
+### `calc_fsm.v`
 
-&#x20; 2. Select an operator (S\_OP)
+Implements the normal calculator finite-state machine:
 
-&#x20; 3. Enter second number and calculate (S\_N2)
+1. `S_N1`: enter the first number.
+2. `S_OP`: select an operator.
+3. `S_N2`: enter the second number and calculate.
 
-&#x20; It stores n1, n2, and the operator, then computes addition, subtraction, multiplication, or division.
+The supported operators are addition, subtraction, multiplication, and division. Subtraction is clamped to zero for negative results, and division by zero produces zero.
 
-The current digit is used directly for the calculation. Results are stored in a 7-bit register, allowing values up to 127.
+The operands are currently single decimal digits. The result is stored in a 7-bit register.
 
-## [sw\_encoder.v]
+### `diff_num_rep.v`
 
-&#x20; Converts the first ten switches into a digit. It expects exactly one switch to be active:
+Implements the number-representation converter.
 
-&#x20; - sw\[0] represents 0
+- Stores a decimal value of up to three digits, from 0 through 999.
+- Uses `btnC` to confirm each entered digit.
+- Allows one-, two-, or three-digit inputs.
+- Uses `btnU` for binary.
+- Uses `btnR` for octal.
+- Uses `btnD` for hexadecimal.
+- Uses `btnL` for decimal.
+- Uses `btnC` after conversion to clear the value and start a new entry.
 
-&#x20; - sw\[1] represents 1
+The output includes the stored value, the number of confirmed digits, and the selected representation mode.
 
-&#x20; - …
+### `sw_encoder.v`
 
-&#x20; - sw\[9] represents 9
+Converts switches 0–9 into a 4-bit digit:
 
-&#x20; If zero or multiple switches are active, digit\_valid is cleared.
+- `sw[0]` represents 0.
+- `sw[1]` represents 1.
+- `...`
+- `sw[9]` represents 9.
 
-## [diff\_num\_rep.v]
+`digit_valid` is asserted only when exactly one digit switch is active.
 
-&#x20; An empty placeholder module. It currently has no ports, logic, or functionality.
+### `debounce.v`
 
-## [font\_rom.v]
+Filters mechanical button bouncing and generates a one-clock-cycle pulse for each button press.
 
-&#x20; Contains 8×8 bitmap glyphs for digits, operators, the equals sign, and spaces. Given a character code and row number, it outputs the corresponding 8-bit row of pixels. The display logic scales each glyph to 16×16 pixels.
+### `font_rom.v`
 
-## [debounce.v]
+Contains 8×8 bitmap glyphs. The OLED renderer samples each glyph at 2× scale to produce 16×16 characters.
 
-&#x20; Filters mechanical button bouncing. It samples the button at approximately 1 ms intervals and generates a one-clock-cycle pulse when a button press is detected. It then ignores further changes for roughly 200 ms.
+The font includes digits 0–9, calculator operators, the equals sign, hexadecimal letters A–F, letters used by `BIN`, `OCT`, `HEX`, and `DEC`, a colon, and a blank space.
 
-## [slow\_clock.v]
+### `slow_clock.v`
 
-&#x20; Divides the Basys3’s 100 MHz clock down to approximately 6.25 MHz by toggling the output every eight input-clock cycles. This clock is used by the OLED controller.
+Divides the 100 MHz board clock to approximately 6.25 MHz for the OLED controller.
 
-## [Oled\_display.v]
+### `Oled_display.v`
 
-&#x20; A reusable OLED controller for the 96×64 RGB OLED display. It:
+Drives the 96×64 RGB OLED connected to the PMOD interface. It handles OLED initialization, pixel timing, and serial pixel output.
 
-&#x20; - Performs OLED startup and configuration
+This is a reusable display controller and should not normally be modified.
 
-&#x20; - Generates display timing
+### `calc_oled_test.v`
 
-&#x20; - Sends pixel data over SPI-like signals
+A standalone OLED test top module. It displays a fixed `5+3=8` expression and tests switch-to-digit display behavior.
 
-&#x20; - Requests pixels using pixel\_index
+It is useful for checking the OLED, font ROM, switch encoder, and display timing independently of the calculator FSM.
 
-&#x20; - Drives the PMOD control pins
+## Header files
 
-&#x20; The file explicitly says it should not be modified.
+### `chars.vh`
 
-## [calc\_oled\_test.v]
+Defines character-code constants shared by `calc_top.v` and `font_rom.v`.
 
-&#x20; A standalone OLED test top module.
+Codes 0–15 contain the original calculator characters. Additional codes contain letters A–F, label letters, the colon, and the blank character.
 
-It displays the hardcoded expression 5+3=8 on the first OLED row and displays the switch-selected digit on the bottom row.
+### `calc_params.vh`
 
-It is intended for testing the font renderer, OLED layout, and switch encoder before using the complete calculator.
+Defines the normal calculator FSM states and operator codes shared by `calc_fsm.v` and `calc_top.v`.
 
+## Other files
 
+### `constraints.xdc`
 
+Maps the top-level ports to physical Basys3 pins, including the 100 MHz clock, pushbuttons, switches, and OLED PMOD signals.
 
-
-# Verilog Header Files
-
-## [chars.vh]
-
-&#x20; Defines 4-bit character codes for digits 0–9, the four operators, the equals sign, and a blank space. These codes are shared by the font ROM and display logic.
-
-## [calc\_params.vh]
-
-&#x20; A Verilog header containing shared constants:
-
-&#x20; - FSM states: entering number 1, selecting an operator, entering number 2
-
-&#x20; - Operator codes: add, subtract, multiply, divide
-
-
-
-
-
-# Constraint File
-
-## [constraints.xdc]
-
-&#x20; Maps the Verilog ports to physical pins on the Basys3 board. It assigns pins for:
-
-&#x20; - The 100 MHz clock
-
-&#x20; - Switches
-
-&#x20; - Pushbuttons
-
-&#x20; - PMOD header JB, which connects to the OLED
-
-&#x20; LED, seven-segment, and other PMOD assignments are present but commented out.
+Some LED and seven-segment display assignments are present but commented out.
