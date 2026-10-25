@@ -1,4 +1,4 @@
-// chars.vh — character codes shared by font_rom and display_renderer
+// chars.vh - character codes shared by font_rom and display_renderer
 // Usage: `include "chars.vh"  (inside the module body)
 
 localparam [3:0] CH_0     = 4'd0,

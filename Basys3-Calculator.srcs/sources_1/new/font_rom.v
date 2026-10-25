@@ -1,5 +1,5 @@
 `timescale 1ns / 1ps
-// font_rom.v — 8x8 glyphs for 0-9 + - x ÷ = and space
+// font_rom.v - 8x8 glyphs for 0-9 + - x ÷ = and space
 //
 // Digits 0-9 have char codes equal to their value, so a 4-bit digit
 // can be fed straight in as char_code.
@@ -9,7 +9,7 @@
 //        -> in the renderer: pixel_on = bits[7 - gx];
 //
 // Each glyph is 64 bits, top row in the most significant byte.
-// Purely combinational — fine at the 6.25 MHz OLED clock.
+// Purely combinational - fine at the 6.25 MHz OLED clock.
 
 module font_rom (
     input  wire [3:0] char_code,
