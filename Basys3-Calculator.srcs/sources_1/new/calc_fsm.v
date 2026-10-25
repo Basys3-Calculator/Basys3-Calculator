@@ -9,6 +9,9 @@ module calc_fsm (
     input  wire       clk,
     input  wire       pC,            // confirm
     input  wire       pU,            // + (only op implemented so far)
+    input  wire       pD,
+    input  wire       pL,
+    input  wire       pR,
     input  wire [3:0] digit,
     input  wire       digit_valid,
 
@@ -28,6 +31,9 @@ module calc_fsm (
     always @(*) begin
         case (op)
             OP_ADD:  alu_out = n1 + digit;
+            OP_SUB:  alu_out = (n1 >= digit) ? (n1 - digit) : 7'd0; 
+            OP_MUL:  alu_out = n1 * digit;
+            OP_DIV:  alu_out = (digit != 0) ? (n1 / digit) : 7'd0; 
             default: alu_out = 7'd0;        // SUB / MUL / DIV: not yet
         endcase
     end
@@ -46,6 +52,15 @@ module calc_fsm (
             S_OP: begin
                 if (pU) begin
                     op     <= OP_ADD;
+                    op_set <= 1'b1;
+                end else if (pD) begin
+                    op     <= OP_SUB;
+                    op_set <= 1'b1;
+                end else if (pL) begin
+                    op     <= OP_MUL;
+                    op_set <= 1'b1;
+                end else if (pR) begin
+                    op     <= OP_DIV;
                     op_set <= 1'b1;
                 end
                 // later: pD -> OP_SUB, pL -> OP_MUL, pR -> OP_DIV

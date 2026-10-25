@@ -1,5 +1,5 @@
 `timescale 1ns / 1ps
-// calc_top.v — addition mode: N1 -> btnC -> btnU (+) -> btnC -> N2 -> btnC
+// calc_top.v - addition mode: N1 -> btnC -> btnU (+) -> btnC -> N2 -> btnC
 //
 // OLED layout (16x16 cells, 6 cols x 4 rows):
 //   row 0 : expression so far   "5"  ->  "5+"  ->  "5+3=8"
@@ -9,6 +9,9 @@ module calc_top (
     input  wire        clk,
     input  wire        btnC,
     input  wire        btnU,
+    input  wire        btnL,
+    input  wire        btnR,
+    input  wire        btnD,
     input  wire [15:0] sw,
     output wire [7:0]  JB
 );
@@ -23,9 +26,12 @@ module calc_top (
     );
 
     // ---------------- buttons -> 1-cycle pulses ----------------
-    wire pC, pU;
+    wire pC, pU, pD, pL, pR;
     debounce u_dbC (.clk(clk), .btn(btnC), .pulse(pC));
     debounce u_dbU (.clk(clk), .btn(btnU), .pulse(pU));
+    debounce u_dbD (.clk(clk), .btn(btnD), .pulse(pD));
+    debounce u_dbL (.clk(clk), .btn(btnL), .pulse(pL));
+    debounce u_dbR (.clk(clk), .btn(btnR), .pulse(pR));
 
     // ---------------- switches -> digit ----------------
     wire [3:0] digit;
@@ -48,6 +54,9 @@ module calc_top (
         .clk         (clk),
         .pC          (pC),
         .pU          (pU),
+        .pD          (pD),
+        .pL          (pL),
+        .pR          (pR),
         .digit       (digit),
         .digit_valid (digit_valid),
         .state       (state),
