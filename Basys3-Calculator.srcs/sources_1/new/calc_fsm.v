@@ -1,40 +1,49 @@
 `timescale 1ns / 1ps
-// calc_fsm.v - input sequence: N1 -> btnC -> op -> btnC -> N2 -> btnC (evaluate)
+// calc_fsm.v - calculator FSM for number entry, operator selection, and evaluation.
+// Supports addition, subtraction, multiplication, and division.
 //
 // Runs on the 100 MHz clock. pC / pU are 1-cycle pulses from debounce.
-// After evaluating it goes straight back to S_N1 with show_result = 1,
-// so the answer stays on screen while the next N1 is entered.
+// After evaluating, the completed equation is added to the history buffer and
+// the FSM returns to S_N1 for the next calculation.
+
+// Every finished equation is pushed into a 7-entry history buffer.
+// Entry layout (18 bits): {n1[3:0], op[1:0], n2[3:0], result[7:0]}
+// hist_flat[i*18 +: 18] is entry i (0 = oldest). hist_count = entries stored (0..7).
+// When the buffer is full and a new equation is started, the oldest entry is dropped.
 
 module calc_fsm (
     input  wire       clk,
     input  wire       pC,            // confirm
-    input  wire       pU,            // + (only op implemented so far)
+    input  wire       pU,            // select addition
     input  wire       pD,
     input  wire       pL,
     input  wire       pR,
-    input  wire [3:0] digit,
+    input  wire       signed [5:0] digit,
     input  wire       digit_valid,
 
     output reg  [1:0] state       = 2'd0,
-    output reg  [3:0] n1          = 4'd0,
+    output reg signed [4:0] n1    = 5'sd0,
     output reg  [1:0] op          = 2'd0,
     output reg        op_set      = 1'b0,   // an op has been picked in S_OP
-    output reg  [3:0] n2          = 4'd0,
-    output reg  [6:0] result      = 7'd0,   // 7 bits: room for 9x9 = 81 later
-    output reg        show_result = 1'b0
+    output reg [7*18-1:0] hist_flat  = 0,
+    output reg [2:0]      hist_count = 3'd0
+
 );
     `include "calc_params.vh"
+    
+    integer i;
 
     // ---------------- ALU ----------------
-    // Uses the live digit (not n2) so the answer is ready on the confirm cycle.
-    reg [6:0] alu_out;
+    reg signed [7:0] alu_out;
+    wire signed [7:0] n1_ext    = {{3{n1[4]}}, n1};
+    wire signed [7:0] digit_ext = {{2{digit[5]}}, digit};
     always @(*) begin
         case (op)
-            OP_ADD:  alu_out = n1 + digit;
-            OP_SUB:  alu_out = (n1 >= digit) ? (n1 - digit) : 7'd0; 
-            OP_MUL:  alu_out = n1 * digit;
-            OP_DIV:  alu_out = (digit != 0) ? (n1 / digit) : 7'd0; 
-            default: alu_out = 7'd0;        // SUB / MUL / DIV: not yet
+            OP_ADD:  alu_out = n1_ext + digit_ext;
+            OP_SUB:  alu_out = n1_ext - digit_ext;
+            OP_MUL:  alu_out = n1_ext * digit_ext;
+            OP_DIV:  alu_out = (digit_ext != 0) ? (n1_ext / digit_ext) : 8'sd0;
+            default: alu_out = 8'sd0;
         endcase
     end
 
@@ -43,27 +52,23 @@ module calc_fsm (
         case (state)
             S_N1: begin
                 if (pC && digit_valid) begin
-                    n1          <= digit;
-                    show_result <= 1'b0;     // clear old answer from top line
-                    state       <= S_OP;
+                    n1    <= digit;
+                    state <= S_OP;
+                    // history full -> scroll up, freeing the last row (row 6)
+                    if (hist_count == 3'd7) begin
+                        for (i = 0; i < 6; i = i + 1)
+                            hist_flat[i*18 +: 18] <= hist_flat[(i+1)*18 +: 18];
+                        hist_count <= 3'd6;
+                    end
                 end
             end
 
             S_OP: begin
-                if (pU) begin
-                    op     <= OP_ADD;
-                    op_set <= 1'b1;
-                end else if (pD) begin
-                    op     <= OP_SUB;
-                    op_set <= 1'b1;
-                end else if (pL) begin
-                    op     <= OP_MUL;
-                    op_set <= 1'b1;
-                end else if (pR) begin
-                    op     <= OP_DIV;
-                    op_set <= 1'b1;
-                end
-                // later: pD -> OP_SUB, pL -> OP_MUL, pR -> OP_DIV
+                if      (pU) begin op <= OP_ADD; op_set <= 1'b1; end
+                else if (pD) begin op <= OP_SUB; op_set <= 1'b1; end
+                else if (pL) begin op <= OP_MUL; op_set <= 1'b1; end
+                else if (pR) begin op <= OP_DIV; op_set <= 1'b1; end
+
                 if (pC && op_set) begin
                     op_set <= 1'b0;
                     state  <= S_N2;
@@ -72,10 +77,10 @@ module calc_fsm (
 
             S_N2: begin
                 if (pC && digit_valid) begin
-                    n2          <= digit;
-                    result      <= alu_out;
-                    show_result <= 1'b1;
-                    state       <= S_N1;
+                    // store finished equation in the next free row, then move down
+                    hist_flat[hist_count*18 +: 18] <= {n1[3:0], op, digit[3:0], alu_out};
+                    hist_count <= hist_count + 3'd1;
+                    state      <= S_N1;
                 end
             end
 

@@ -1,9 +1,10 @@
 `timescale 1ns / 1ps
-// calc_top.v - addition mode: N1 -> btnC -> btnU (+) -> btnC -> N2 -> btnC
+// calc_top.v - calculator top level: enter N1, select an operator, enter N2,
+// then confirm to evaluate and add the completed equation to the history.
 //
-// OLED layout (16x16 cells, 6 cols x 4 rows):
-//   row 0 : expression so far   "5"  ->  "5+"  ->  "5+3=8"
-//   row 3 : current input       live digit, or the selected op
+// OLED layout uses a 12-column by 8-row grid of 16x16 character cells.
+// Completed equations occupy the history rows, followed by the active equation
+// and the current input or selected operator.
 
 module calc_top (
     input  wire        clk,
@@ -35,6 +36,7 @@ module calc_top (
 
     // ---------------- switches -> digit ----------------
     wire [3:0] digit;
+    wire signed [5:0] calc_digit = {2'b00, digit};
     wire       digit_valid;
     sw_encoder u_sw (
         .sw          (sw[9:0]),
@@ -44,11 +46,9 @@ module calc_top (
 
     // ---------------- FSMs ----------------
     wire [1:0] state;
-    wire [3:0] n1, n2;
+    wire signed [4:0] n1;
     wire [1:0] op;
     wire       op_set;
-    wire [6:0] result;
-    wire       show_result;
 
     // The two mode switches must be different for exactly one mode to run.
     // If both are off, show the mode-selection screen. If both are on, show
@@ -73,6 +73,8 @@ module calc_top (
     wire [11:0] diff_value;
     wire [2:0]  diff_digit_count;
     wire [1:0]  diff_view;
+    wire [7*18-1:0] hist_flat;
+    wire [2:0]  hist_count;
 
     calc_fsm u_fsm (
         .clk         (clk),
@@ -81,15 +83,14 @@ module calc_top (
         .pD          (pD_calc),
         .pL          (pL_calc),
         .pR          (pR_calc),
-        .digit       (digit),
+        .digit       (calc_digit),
         .digit_valid (digit_valid),
         .state       (state),
         .n1          (n1),
         .op          (op),
         .op_set      (op_set),
-        .n2          (n2),
-        .result      (result),
-        .show_result (show_result)
+        .hist_flat   (hist_flat),
+        .hist_count (hist_count)
     );
 
     diff_num_rep u_diff (
@@ -111,23 +112,34 @@ module calc_top (
     // also uses letter, colon, and menu-label codes, so the final char_code is
     // six bits.
     wire [3:0] op_char  = CH_PLUS + op;     // OP_ADD->'+', OP_SUB->'-', ...
-    wire [3:0] res_tens = result / 10;
-    wire [3:0] res_ones = result % 10;
-
     // ---------------- pixel -> character cell ----------------
     wire [12:0] pixel_index;
     wire [6:0]  x = pixel_index % 96;
     wire [5:0]  y = pixel_index / 96;
 
-    wire [2:0] char_col = x[6:4];
-    wire [1:0] char_row = y[5:4];
-    wire [2:0] gx       = x[3:1];
-    wire [2:0] gy       = y[3:1];
     // Menu text uses 6x8 cells: 16 columns fit across 96 pixels.
     wire [3:0] compact_col = x / 6;
     wire [2:0] compact_row = y / 8;
     wire [2:0] compact_gx  = x % 6;
     wire [2:0] compact_gy  = y % 8;
+
+    // 96 x 64 resolution makes for 12 x 8 grid of characters
+    wire [3:0] char_col = x[6:3];
+    wire [2:0] char_row = y[5:3];
+    wire [2:0] gx       = x[2:0];
+    wire [2:0] gy       = y[2:0];
+
+    // ---------------- values -> char codes ----------------
+    wire [17:0] entry   = hist_flat[char_row*18 +: 18];
+    wire [3:0]  e_n1    = entry[17:14];
+    wire [1:0]  e_op    = entry[13:12];
+    wire [3:0]  e_n2    = entry[11:8];
+    wire signed [7:0] e_res = entry[7:0];
+    wire        e_neg   = e_res[7];
+    wire [7:0]  e_abs   = e_neg ? (~e_res + 8'd1) : e_res;
+    wire [3:0]  e_tens  = e_abs / 10;
+    wire [3:0]  e_ones  = e_abs % 10;
+    wire [3:0]  e_op_char = CH_PLUS + e_op;
 
     // ---------------- character map ----------------
     reg [5:0] char_code;
@@ -160,33 +172,26 @@ module calc_top (
         hex_tens      = (diff_value / 16) % 16;
         hex_ones      = diff_value % 16;
 
-        // Normal calculator renderer: 16x16 cells, six columns wide.
-        // It preserves the original calculator's large-character layout.
-        if (char_row == 2'd0) begin
-            case (state)
-                S_N1: begin
-                    if (show_result) begin
-                        case (char_col)
-                            3'd0: normal_char_code = n1;
-                            3'd1: normal_char_code = op_char;
-                            3'd2: normal_char_code = n2;
-                            3'd3: normal_char_code = CH_EQ;
-                            3'd4: normal_char_code = (res_tens != 0) ? res_tens : res_ones;
-                            3'd5: normal_char_code = (res_tens != 0) ? res_ones : CH_SPACE;
-                            default: normal_char_code = CH_SPACE;
-                        endcase
-                    end
-                end
-                S_OP: begin
-                    if (char_col == 3'd0) normal_char_code = n1;
-                end
-                S_N2: begin
-                    if      (char_col == 3'd0) normal_char_code = n1;
-                    else if (char_col == 3'd1) normal_char_code = op_char;
-                end
+        // Normal calculator renderer: one completed equation per history row.
+        if (char_row < hist_count) begin
+            case (char_col)
+                4'd0: normal_char_code = e_n1;
+                4'd1: normal_char_code = e_op_char;
+                4'd2: normal_char_code = e_n2;
+                4'd3: normal_char_code = CH_EQ;
+                4'd4: normal_char_code = e_neg ? CH_MINUS : ((e_tens != 0) ? e_tens : e_ones);
+                4'd5: normal_char_code = e_neg ? ((e_tens != 0) ? e_tens : e_ones)
+                                                : ((e_tens != 0) ? e_ones : CH_SPACE);
+                4'd6: normal_char_code = e_neg ? ((e_tens != 0) ? e_ones : CH_SPACE) : CH_SPACE;
                 default: normal_char_code = CH_SPACE;
             endcase
-        end else if (char_row == 2'd3 && char_col == 3'd0) begin
+        end else if (char_row == hist_count && state != S_N1) begin
+            // Show the equation currently being entered on the next row.
+            if (char_col == 4'd0)
+                normal_char_code = n1;
+            else if (char_col == 4'd1 && state == S_N2)
+                normal_char_code = op_char;
+        end else if (char_row == 3'd7 && char_col == 4'd0) begin
             case (state)
                 S_N1, S_N2: if (digit_valid) normal_char_code = digit;
                 S_OP:       if (op_set)      normal_char_code = op_char;
@@ -208,8 +213,8 @@ module calc_top (
         else                            bin_len = 4'd1;
 
         // Representation mode uses the same 16x16 cells as the calculator:
-        // six columns per row. Binary wraps to the next row when necessary.
-        if (char_row == 2'd0) begin
+        // twelve columns per row. Values up to 999 fit on one binary row.
+        if (char_row == 3'd0) begin
             case (char_col)
                 3'd0: diff_char_code = (diff_view == 2'd1) ? CH_B :
                                        (diff_view == 2'd2) ? CH_O :
@@ -226,7 +231,7 @@ module calc_top (
         end else if (char_row == 2'd1) begin
             case (diff_view)
                 2'd1: begin
-                    // First six significant binary digits.
+                    // Display the significant binary digits on the current row.
                     if (char_col < bin_len)
                         diff_char_code = diff_value[bin_len - 1 - char_col] ? CH_1 : CH_0;
                 end
@@ -287,16 +292,10 @@ module calc_top (
                     end
                 end
             endcase
-        end else if (char_row == 2'd2) begin
-            // Remaining binary digits wrap to row 2. For example, 999 becomes
-            // "111110" on row 1 followed by "0111" on row 2.
-            if (diff_view == 2'd1 && (char_col + 3'd6) < bin_len)
-                diff_char_code = diff_value[bin_len - 1 - (char_col + 3'd6)] ? CH_1 : CH_0;
-        end else if (char_row == 2'd3) begin
-            // Show exactly one currently selected switch digit near the bottom
-            // while entering decimal input. btnC confirms and appends it above.
-            if (char_col == 3'd0 && diff_view == 2'd0 && digit_valid)
-                diff_char_code = digit;
+        end else if (char_row == 3'd7) begin
+            // Show the currently selected decimal input at the bottom left.
+            if (char_col == 4'd0 && diff_view == 2'd0 && digit_valid)
+                diff_char_code = CH_0 + digit;
         end
 
         // Invalid mode-selection screens use 6x8 text so the full messages
