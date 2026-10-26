@@ -44,11 +44,11 @@ module calc_top (
 
     // ---------------- FSM ----------------
     wire [1:0] state;
-    wire signed [4:0] n1, n2;
+    wire signed [4:0] n1;
     wire [1:0] op;
     wire       op_set;
-    wire signed [7:0] result;
-    wire       show_result;
+    wire [7*18-1:0] hist_flat;
+    wire [2:0]  hist_count;
 
     calc_fsm u_fsm (
         .clk         (clk),
@@ -63,17 +63,9 @@ module calc_top (
         .n1          (n1),
         .op          (op),
         .op_set      (op_set),
-        .n2          (n2),
-        .result      (result),
-        .show_result (show_result)
+        .hist_flat(hist_flat),
+        .hist_count(hist_count)
     );
-
-    // ---------------- values -> char codes ----------------
-    wire [3:0] op_char  = CH_PLUS + op;     // OP_ADD->'+', OP_SUB->'-', ...
-    wire        is_neg  = result[7];        //check if result is neg           
-    wire [7:0]  abs_res = is_neg ? -result : result; //convert result
-    wire [3:0]  res_tens = abs_res / 10;
-    wire [3:0]  res_ones = abs_res % 10;
 
     // ---------------- pixel -> character cell ----------------
     wire [12:0] pixel_index;
@@ -81,57 +73,61 @@ module calc_top (
     wire [5:0]  y = pixel_index / 96;
     
     // 96 x 64 resolution makes for 12 x 8 grid of characters
-    wire [3:0] char_col = x[6:3];   // 0..11
-    wire [2:0] char_row = y[5:3];   // 0..7
+    wire [3:0] char_col = x[6:3];
+    wire [2:0] char_row = y[5:3];   
     wire [2:0] gx       = x[2:0];
     wire [2:0] gy       = y[2:0];
+
+    // ---------------- values -> char codes ----------------
+    wire [3:0] op_char  = CH_PLUS + op;     // OP_ADD->'+', OP_SUB->'-', ...
+    
+    wire [17:0] entry   = hist_flat[char_row*18 +: 18];
+    wire [3:0]  e_n1    = entry[17:14];
+    wire [1:0]  e_op    = entry[13:12];
+    wire [3:0]  e_n2    = entry[11:8];
+    wire signed [7:0] e_res = entry[7:0];
+    wire        e_neg   = e_res[7];
+    wire [7:0]  e_abs   = e_neg ? -e_res : e_res;
+    wire [3:0]  e_tens  = e_abs / 10;
+    wire [3:0]  e_ones  = e_abs % 10;
+    wire [3:0]  e_op_char = CH_PLUS + e_op;
 
     // ---------------- character map ----------------
     reg [3:0] char_code;
     always @(*) begin
         char_code = CH_SPACE;
 
-        // ----- top line: expression / answer -----
-        if (char_row == 2'd0) begin
-            case (state)
-                S_N1: begin
-                    if (show_result) begin
-                        case (char_col)
-                            3'd0: char_code = n1;
-                            3'd1: char_code = op_char;
-                            3'd2: char_code = n2;
-                            3'd3: char_code = CH_EQ;
-                            3'd4: char_code = !is_neg ? 
-                                                ((res_tens != 0) ? res_tens : res_ones) :
-                                                CH_MINUS;
-                            3'd5: char_code = !is_neg ? 
-                                                ((res_tens != 0) ? res_ones : CH_SPACE) :
-                                                ((res_tens != 0) ? res_tens : res_ones);
-                            3'd6: char_code = !is_neg ? 
-                                                CH_SPACE :
-                                                ((res_tens != 0) ? res_ones : CH_SPACE);
-                            default: char_code = CH_SPACE;
-                        endcase
-                    end
-                end
-                S_OP: begin
-                    if (char_col == 3'd0) char_code = n1;
-                end
-                S_N2: begin
-                    if      (char_col == 3'd0) char_code = n1;
-                    else if (char_col == 3'd1) char_code = op_char;
-                end
+        // ----- bottom row: current input -----
+        if (char_row == 3'd7) begin
+            if (char_col == 4'd0) begin
+                case (state)
+                    S_N1, S_N2: if (digit_valid) char_code = digit;
+                    S_OP:       if (op_set)      char_code = op_char;
+                    default:    char_code = CH_SPACE;
+                endcase
+            end
+        end
+
+        // ----- finished equations -----
+        else if (char_row < hist_count) begin
+            case (char_col)
+                4'd0: char_code = e_n1;
+                4'd1: char_code = e_op_char;
+                4'd2: char_code = e_n2;
+                4'd3: char_code = CH_EQ;
+                4'd4: char_code = !e_neg ? ((e_tens != 0) ? e_tens : e_ones) : CH_MINUS;
+                4'd5: char_code = !e_neg ? ((e_tens != 0) ? e_ones : CH_SPACE)
+                                         : ((e_tens != 0) ? e_tens : e_ones);
+                4'd6: char_code = !e_neg ? CH_SPACE
+                                         : ((e_tens != 0) ? e_ones : CH_SPACE);
                 default: char_code = CH_SPACE;
             endcase
         end
 
-        // ----- bottom line: current input -----
-        else if (char_row == 3'd7 && char_col == 4'd0) begin
-            case (state)
-                S_N1, S_N2: if (digit_valid) char_code = digit;
-                S_OP:       if (op_set)      char_code = op_char;
-                default:    char_code = CH_SPACE;
-            endcase
+        // ----- equation currently being typed (next free row) -----
+        else if (char_row == hist_count && state != S_N1) begin
+            if      (char_col == 4'd0)                    char_code = n1;
+            else if (char_col == 4'd1 && state == S_N2)   char_code = op_char;
         end
     end
 
