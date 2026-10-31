@@ -14,10 +14,23 @@ module calc_top (
     input  wire        btnR,
     input  wire        btnD,
     input  wire [15:0] sw,
-    output wire [7:0]  JC
+    output wire [7:0]  JC,
+    output wire [15:0] led,
+    output wire [6:0]  seg,
+    output wire        dp,
+    output wire [3:0]  an
 );
     `include "chars.vh"
     `include "calc_params.vh"
+
+    // Mirror each switch directly to its corresponding user LED.
+    assign led = sw;
+
+    // The Basys 3 seven-segment display is active-low. Keep every segment
+    // and digit enable inactive until the display is needed later.
+    assign seg = 7'b1111111;
+    assign dp  = 1'b1;
+    assign an  = 4'b1111;
 
     // ---------------- clocks ----------------
     wire clk6p25m;
@@ -38,6 +51,7 @@ module calc_top (
     wire [3:0] digit;
     wire signed [5:0] calc_digit = {2'b00, digit};
     wire       digit_valid;
+    wire       digit_conflict = (sw[9:0] != 10'd0) && !digit_valid;
     sw_encoder u_sw (
         .sw          (sw[9:0]),
         .digit       (digit),
@@ -50,13 +64,15 @@ module calc_top (
     wire [1:0] op;
     wire       op_set;
 
-    // The two mode switches must be different for exactly one mode to run.
-    // If both are off, show the mode-selection screen. If both are on, show
-    // the mode-conflict screen. Neither invalid combination updates an FSM.
-    wire        diff_active  = sw[12] && !sw[11];
-    wire        calc_active  = sw[11] && !sw[12];
-    wire        mode_select  = !sw[11] && !sw[12];
-    wire        mode_conflict = sw[11] && sw[12];
+    // SW11, SW12, and SW13 select the operating mode; SW10 is ignored here.
+    // If all three are off, show the mode-selection screen. If two or more
+    // are on, show the mode-conflict screen.
+    wire        trig_active  = sw[13] && !sw[11] && !sw[12];
+    wire        diff_active  = sw[12] && !sw[11] && !sw[13];
+    wire        calc_active  = sw[11] && !sw[12] && !sw[13];
+    wire        mode_select  = !sw[11] && !sw[12] && !sw[13];
+    wire        mode_conflict = !mode_select && !trig_active &&
+                                !diff_active && !calc_active;
 
     // Gate every event by the active mode. This preserves each module's state
     // while preventing input in one mode from updating the other mode.
@@ -70,11 +86,35 @@ module calc_top (
     wire pD_diff = pD && diff_active;
     wire pL_diff = pL && diff_active;
     wire pR_diff = pR && diff_active;
+    wire pC_trig = pC && trig_active;
+    wire pU_trig = pU && trig_active;
+    wire pD_trig = pD && trig_active;
+    wire pL_trig = pL && trig_active;
+    wire pR_trig = pR && trig_active;
     wire [11:0] diff_value;
     wire [2:0]  diff_digit_count;
     wire [1:0]  diff_view;
     wire [7*18-1:0] hist_flat;
     wire [2:0]  hist_count;
+    wire [12:0] pixel_index;
+
+    // Trigonometric renderer. It reuses the main OLED controller and the
+    // existing font ROM, while keeping its angle state independent.
+    wire [15:0] trig_pixel_data;
+    trig_top u_trig (
+        .clk         (clk),
+        .trig_enable (trig_active),
+        .pC          (pC_trig),
+        .pU          (pU_trig),
+        .pD          (pD_trig),
+        .pL          (pL_trig),
+        .pR          (pR_trig),
+        .digit       (digit),
+        .digit_valid (digit_valid),
+        .digit_conflict (digit_conflict),
+        .pixel_index (pixel_index),
+        .pixel_data  (trig_pixel_data)
+    );
 
     calc_fsm u_fsm (
         .clk         (clk),
@@ -113,7 +153,6 @@ module calc_top (
     // six bits.
     wire [3:0] op_char  = CH_PLUS + op;     // OP_ADD->'+', OP_SUB->'-', ...
     // ---------------- pixel -> character cell ----------------
-    wire [12:0] pixel_index;
     wire [6:0]  x = pixel_index % 96;
     wire [5:0]  y = pixel_index / 96;
 
@@ -298,23 +337,25 @@ module calc_top (
                 diff_char_code = CH_0 + digit;
         end
 
-        // Invalid mode-selection screens use 6x8 text so the full messages
-        // fit across the 96-pixel OLED width (up to 16 characters per row).
-        // The strings are placed on menu rows 0, 2, and 4.
+    // The normal mode-selection labels use 6x8 cells. The longer mode-
+    // conflict message uses 5x8 cells so both requested lines fit.
+    // The strings are placed on menu rows 0, 1, 3, and 5.
         if (mode_select) begin
             case (compact_row)
                 3'd0: begin
                     case (compact_col)
-                        4'd0: menu_char_code = CH_S;
-                        4'd1: menu_char_code = CH_E;
-                        4'd2: menu_char_code = CH_L;
+                        4'd0: menu_char_code = CH_MINUS;
+                        4'd2: menu_char_code = CH_S;
                         4'd3: menu_char_code = CH_E;
-                        4'd4: menu_char_code = CH_C;
-                        4'd5: menu_char_code = CH_T;
-                        4'd7: menu_char_code = CH_M;
-                        4'd8: menu_char_code = CH_O;
-                        4'd9: menu_char_code = CH_D;
-                        4'd10: menu_char_code = CH_E;
+                        4'd4: menu_char_code = CH_L;
+                        4'd5: menu_char_code = CH_E;
+                        4'd6: menu_char_code = CH_C;
+                        4'd7: menu_char_code = CH_T;
+                        4'd9: menu_char_code = CH_M;
+                        4'd10: menu_char_code = CH_O;
+                        4'd11: menu_char_code = CH_D;
+                        4'd12: menu_char_code = CH_E;
+                        4'd14: menu_char_code = CH_MINUS;
                         default: menu_char_code = CH_SPACE;
                     endcase
                 end
@@ -353,40 +394,52 @@ module calc_top (
                         default: menu_char_code = CH_SPACE;
                     endcase
                 end
-                default: menu_char_code = CH_SPACE;
-            endcase
-        end else if (mode_conflict) begin
-            case (compact_row)
-                3'd0: begin
+                3'd6: begin
                     case (compact_col)
-                        4'd0: menu_char_code = CH_M;
-                        4'd1: menu_char_code = CH_O;
-                        4'd2: menu_char_code = CH_D;
-                        4'd3: menu_char_code = CH_E;
-                        4'd5: menu_char_code = CH_C;
-                        4'd6: menu_char_code = CH_O;
-                        4'd7: menu_char_code = CH_N;
-                        4'd8: menu_char_code = CH_F;
-                        4'd9: menu_char_code = CH_L;
-                        4'd10: menu_char_code = CH_I;
-                        4'd11: menu_char_code = CH_C;
-                        4'd12: menu_char_code = CH_T;
+                        4'd0: menu_char_code = CH_1;
+                        4'd1: menu_char_code = CH_3;
+                        4'd2: menu_char_code = CH_COLON;
+                        4'd4: menu_char_code = CH_T;
+                        4'd5: menu_char_code = CH_R;
+                        4'd6: menu_char_code = CH_I;
+                        4'd7: menu_char_code = CH_G;
+                        4'd8: menu_char_code = CH_O;
+                        4'd10: menu_char_code = CH_F;
+                        4'd11: menu_char_code = CH_U;
+                        4'd12: menu_char_code = CH_N;
+                        4'd13: menu_char_code = CH_C;
                         default: menu_char_code = CH_SPACE;
                     endcase
                 end
+                default: menu_char_code = CH_SPACE;
+            endcase
+        end else if (mode_conflict) begin
+            // Use the same 6x8 menu font as the mode-selection screen.
+            case (compact_row)
                 3'd2: begin
                     case (compact_col)
-                        4'd0: menu_char_code = CH_T;
-                        4'd1: menu_char_code = CH_U;
-                        4'd2: menu_char_code = CH_R;
-                        4'd3: menu_char_code = CH_N;
-                        4'd5: menu_char_code = CH_O;
-                        4'd6: menu_char_code = CH_N;
-                        4'd7: menu_char_code = CH_E;
-                        4'd8: menu_char_code = CH_SPACE;
-                        4'd9: menu_char_code = CH_O;
-                        4'd10: menu_char_code = CH_F;
-                        4'd11: menu_char_code = CH_F;
+                        4'd3:  menu_char_code = CH_S;
+                        4'd4:  menu_char_code = CH_E;
+                        4'd5:  menu_char_code = CH_L;
+                        4'd6:  menu_char_code = CH_E;
+                        4'd7:  menu_char_code = CH_C;
+                        4'd8:  menu_char_code = CH_T;
+                        4'd10: menu_char_code = CH_O;
+                        4'd11: menu_char_code = CH_N;
+                        4'd12: menu_char_code = CH_E;
+                        default: menu_char_code = CH_SPACE;
+                    endcase
+                end
+                3'd4: begin
+                    case (compact_col)
+                        4'd3:  menu_char_code = CH_M;
+                        4'd4:  menu_char_code = CH_O;
+                        4'd5:  menu_char_code = CH_D;
+                        4'd6:  menu_char_code = CH_E;
+                        4'd8:  menu_char_code = CH_O;
+                        4'd9:  menu_char_code = CH_N;
+                        4'd10: menu_char_code = CH_L;
+                        4'd11: menu_char_code = CH_Y;
                         default: menu_char_code = CH_SPACE;
                     endcase
                 end
@@ -402,6 +455,38 @@ module calc_top (
             char_code = normal_char_code;
         else
             char_code = CH_SPACE;
+
+        // An invalid multi-switch digit selection overlays only the bottom
+        // two rows, preserving the active equation or conversion above.
+        if (digit_conflict && (calc_active || diff_active)) begin
+            if (char_row == 3'd6) begin
+                case (char_col)
+                    4'd1: char_code = CH_S;
+                    4'd2: char_code = CH_E;
+                    4'd3: char_code = CH_L;
+                    4'd4: char_code = CH_E;
+                    4'd5: char_code = CH_C;
+                    4'd6: char_code = CH_T;
+                    4'd8: char_code = CH_O;
+                    4'd9: char_code = CH_N;
+                    4'd10: char_code = CH_E;
+                    default: char_code = CH_SPACE;
+                endcase
+            end else if (char_row == 3'd7) begin
+                case (char_col)
+                    4'd1: char_code = CH_D;
+                    4'd2: char_code = CH_I;
+                    4'd3: char_code = CH_G;
+                    4'd4: char_code = CH_I;
+                    4'd5: char_code = CH_T;
+                    4'd7: char_code = CH_O;
+                    4'd8: char_code = CH_N;
+                    4'd9: char_code = CH_L;
+                    4'd10: char_code = CH_Y;
+                    default: char_code = CH_SPACE;
+                endcase
+            end
+        end
     end
 
     // ---------------- font lookup ----------------
@@ -413,9 +498,19 @@ module calc_top (
         .bits      (font_row)
     );
 
-    wire [15:0] oled_data = (mode_select || mode_conflict) ?
-                            (font_row[7 - compact_gx] ? 16'hFFFF : 16'h0000) :
-                            (font_row[7 - gx] ? 16'hFFFF : 16'h0000);
+    // RGB565 text colors: white for normal content, reddish orange for
+    // errors, and cyan for the pending bottom-left input/operator indicator.
+    wire [15:0] regular_text_color =
+        mode_conflict ? 16'hFBE0 :
+        ((digit_conflict && (calc_active || diff_active) &&
+          (char_row == 3'd6 || char_row == 3'd7)) ? 16'hFBE0 :
+        (((calc_active || (diff_active && diff_view == 2'd0)) &&
+          char_row == 3'd7 && char_col == 4'd0) ? 16'h07FF : 16'hFFFF));
+
+    wire [15:0] regular_oled_data = (mode_select || mode_conflict) ?
+                                    (font_row[7 - compact_gx] ? regular_text_color : 16'h0000) :
+                                    (font_row[7 - gx] ? regular_text_color : 16'h0000);
+    wire [15:0] oled_data = trig_active ? trig_pixel_data : regular_oled_data;
 
     // ---------------- OLED ----------------
     Oled_Display u_oled (
