@@ -99,7 +99,9 @@ Pushbutton functions depend on the selected mode:
 
 - Each switch has a corresponding LED indicator.
 - The OLED shows the current mode, input, equation, result, conversion, or error message.
-- Error messages use reddish orange, while the pending bottom-left digit or operator uses cyan.
+- OLED text uses yellow for function/unit and number-representation labels,
+  green for confirmed numeric values, cyan for the pending bottom-left digit or
+  operator, and reddish orange for error messages including `UNDEFINED`.
 - The seven-segment display is intentionally disabled and remains off. Its outputs are driven to the inactive state so it can be used for a future feature.
 
 ## Operations mode (`SW11`)
@@ -152,11 +154,17 @@ SIN(90 RAD)
 
 The result is displayed to four decimal places with rounding in both directions. Tangent is reported as `UNDEFINED` when the cosine of the input is zero, including odd multiples of 90 degrees.
 
-The trigonometric implementation uses a half-degree sine lookup table with higher internal precision. Cosine is calculated using a 90-degree phase shift, and tangent is calculated from the sine/cosine ratio. Degree inputs are normalized by the lookup-table period; radian inputs retain the fractional conversion constant before interpolation and are rounded only when producing the four-decimal-place result.
+The trigonometric implementation uses a half-degree sine lookup table with
+higher internal precision. Cosine is calculated using a 90-degree phase shift.
+For degree input, tangent uses a dedicated four-decimal-place degree table;
+for radian input, it uses the raw sine/cosine ratio with 64-bit intermediates
+before rounding to four decimal places. Degree inputs are normalized by the
+lookup-table period, and tangent is guarded by the rounded-cosine undefined
+check.
 
 ## Polynomial mode (`SW14`)
 
-`poly_fsm.v`, `poly_solver.v`, and `poly_display.v` implement linear and quadratic equations. Linear mode solves `Ax + B = 0`; quadratic mode solves `Ax² + Bx + C = 0`. Coefficients are single decimal digits, with `SW10` selecting a negative sign for non-zero coefficients. The solver uses fixed-point arithmetic and an integer square-root helper, and displays real, repeated, complex, or no-real-root outcomes.
+`poly_fsm.v`, `poly_solver.v`, and `poly_display.v` implement linear and quadratic equations. The startup prompt uses `U: LINEAR` and `D: QUADRATIC`. Linear mode solves `Ax + B = 0`; quadratic mode solves `Ax² + Bx + C = 0`. Coefficients are single decimal digits, with `SW10` selecting a negative sign for non-zero coefficients. The solver uses fixed-point arithmetic and an integer square-root helper, and displays real, repeated, complex, or no-real-root outcomes. Complex roots use a lowercase `i` for the imaginary component.
 
 ## Verilog source files
 
