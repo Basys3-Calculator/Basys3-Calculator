@@ -44,4 +44,6 @@ localparam [5:0] CH_0     = 6'd0,
                  CH_RPAREN = 6'd38,
                  CH_DOT   = 6'd39,
                  CH_DEGREE = 6'd40,
-                 CH_Y     = 6'd41;
+                 CH_Y     = 6'd41,
+                 CH_SQ    = 6'd42,  // superscript 2 for x^2
+                 CH_PM    = 6'd43;  // plus/minus for complex roots

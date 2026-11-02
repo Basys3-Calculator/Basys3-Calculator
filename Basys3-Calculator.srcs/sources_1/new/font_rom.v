@@ -63,6 +63,8 @@ module font_rom (
             CH_DOT:   glyph = 64'h00_00_00_00_00_18_18_00;
             CH_DEGREE: glyph = 64'h00_3C_66_3C_00_00_00_00;
             CH_Y:     glyph = 64'h66_66_3C_18_18_18_18_00;
+            CH_SQ:    glyph = 64'h7C_0E_1C_38_70_7E_00_00;
+            CH_PM:    glyph = 64'h18_18_7E_18_18_00_7E_00;
             default:  glyph = 64'h00_00_00_00_00_00_00_00;   // CH_SPACE
         endcase
     end

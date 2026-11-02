@@ -67,12 +67,13 @@ module calc_top (
     // SW11, SW12, and SW13 select the operating mode; SW10 is ignored here.
     // If all three are off, show the mode-selection screen. If two or more
     // are on, show the mode-conflict screen.
-    wire        trig_active  = sw[13] && !sw[11] && !sw[12];
-    wire        diff_active  = sw[12] && !sw[11] && !sw[13];
-    wire        calc_active  = sw[11] && !sw[12] && !sw[13];
-    wire        mode_select  = !sw[11] && !sw[12] && !sw[13];
+    wire        poly_active  = sw[14] && !sw[11] && !sw[12] && !sw[13];
+    wire        trig_active  = sw[13] && !sw[11] && !sw[12] && !sw[14];
+    wire        diff_active  = sw[12] && !sw[11] && !sw[13] && !sw[14];
+    wire        calc_active  = sw[11] && !sw[12] && !sw[13] && !sw[14];
+    wire        mode_select  = !sw[11] && !sw[12] && !sw[13] && !sw[14];
     wire        mode_conflict = !mode_select && !trig_active &&
-                                !diff_active && !calc_active;
+                                !diff_active && !calc_active && !poly_active;
 
     // Gate every event by the active mode. This preserves each module's state
     // while preventing input in one mode from updating the other mode.
@@ -91,6 +92,11 @@ module calc_top (
     wire pD_trig = pD && trig_active;
     wire pL_trig = pL && trig_active;
     wire pR_trig = pR && trig_active;
+    wire pC_poly = pC && poly_active;
+    wire pU_poly = pU && poly_active;
+    wire pD_poly = pD && poly_active;
+    wire pL_poly = pL && poly_active;
+    wire pR_poly = pR && poly_active;
     wire [11:0] diff_value;
     wire [2:0]  diff_digit_count;
     wire [1:0]  diff_view;
@@ -114,6 +120,47 @@ module calc_top (
         .digit_conflict (digit_conflict),
         .pixel_index (pixel_index),
         .pixel_data  (trig_pixel_data)
+    );
+
+    // ---------------- polynomial root finder ----------------
+    wire [2:0] poly_state;
+    wire poly_quad, poly_mode_set, poly_solve_start, poly_solver_done;
+    wire poly_a_neg, poly_b_neg, poly_c_neg;
+    wire [3:0] poly_a_mag, poly_b_mag, poly_c_mag;
+    wire [2:0] poly_rtype;
+    wire poly_r1_neg, poly_r2_neg;
+    wire [9:0] poly_r1_mag, poly_r2_mag;
+    poly_fsm u_poly_fsm (
+        .clk(clk), .pC(pC_poly), .pU(pU_poly), .pD(pD_poly),
+        .pL(pL_poly), .pR(pR_poly), .digit(digit),
+        .digit_valid(digit_valid), .sw_neg(sw[10]),
+        .solver_done(poly_solver_done), .state(poly_state),
+        .quad(poly_quad), .mode_set(poly_mode_set),
+        .a_neg(poly_a_neg), .a_mag(poly_a_mag),
+        .b_neg(poly_b_neg), .b_mag(poly_b_mag),
+        .c_neg(poly_c_neg), .c_mag(poly_c_mag),
+        .solve_start(poly_solve_start)
+    );
+    poly_solver u_poly_solver (
+        .clk(clk), .start(poly_solve_start), .quad(poly_quad),
+        .a_neg(poly_a_neg), .a_mag(poly_a_mag),
+        .b_neg(poly_b_neg), .b_mag(poly_b_mag),
+        .c_neg(poly_c_neg), .c_mag(poly_c_mag),
+        .done(poly_solver_done), .rtype(poly_rtype),
+        .r1_neg(poly_r1_neg), .r1_mag(poly_r1_mag),
+        .r2_neg(poly_r2_neg), .r2_mag(poly_r2_mag)
+    );
+    wire [15:0] poly_pixel_data;
+    poly_display u_poly_display (
+        .clk(clk), .pixel_index(pixel_index), .state(poly_state),
+        .quad(poly_quad), .mode_set(poly_mode_set), .sw_neg(sw[10]),
+        .digit(digit), .digit_valid(digit_valid),
+        .a_neg(poly_a_neg), .a_mag(poly_a_mag),
+        .b_neg(poly_b_neg), .b_mag(poly_b_mag),
+        .c_neg(poly_c_neg), .c_mag(poly_c_mag),
+        .rtype(poly_rtype), .r1_neg(poly_r1_neg), .r1_mag(poly_r1_mag),
+        .r2_neg(poly_r2_neg), .r2_mag(poly_r2_mag),
+        .pixel_data(poly_pixel_data)
     );
 
     calc_fsm u_fsm (
@@ -403,11 +450,32 @@ module calc_top (
                         4'd5: menu_char_code = CH_R;
                         4'd6: menu_char_code = CH_I;
                         4'd7: menu_char_code = CH_G;
-                        4'd8: menu_char_code = CH_O;
-                        4'd10: menu_char_code = CH_F;
-                        4'd11: menu_char_code = CH_U;
-                        4'd12: menu_char_code = CH_N;
-                        4'd13: menu_char_code = CH_C;
+                        4'd9: menu_char_code = CH_1;
+                        4'd10: menu_char_code = CH_4;
+                        4'd11: menu_char_code = CH_COLON;
+                        4'd12: menu_char_code = CH_R;
+                        4'd13: menu_char_code = CH_O;
+                        4'd14: menu_char_code = CH_O;
+                        4'd15: menu_char_code = CH_T;
+                        default: menu_char_code = CH_SPACE;
+                    endcase
+                end
+                3'd7: begin
+                    // Polynomial mode is shown on its own bottom menu row.
+                    case (compact_col)
+                        4'd0: menu_char_code = CH_1;
+                        4'd1: menu_char_code = CH_4;
+                        4'd2: menu_char_code = CH_COLON;
+                        4'd4: menu_char_code = CH_P;
+                        4'd5: menu_char_code = CH_O;
+                        4'd6: menu_char_code = CH_L;
+                        4'd7: menu_char_code = CH_Y;
+                        4'd8: menu_char_code = CH_N;
+                        4'd9: menu_char_code = CH_O;
+                        4'd10: menu_char_code = CH_M;
+                        4'd11: menu_char_code = CH_I;
+                        4'd12: menu_char_code = CH_A;
+                        4'd13: menu_char_code = CH_L;
                         default: menu_char_code = CH_SPACE;
                     endcase
                 end
@@ -510,7 +578,8 @@ module calc_top (
     wire [15:0] regular_oled_data = (mode_select || mode_conflict) ?
                                     (font_row[7 - compact_gx] ? regular_text_color : 16'h0000) :
                                     (font_row[7 - gx] ? regular_text_color : 16'h0000);
-    wire [15:0] oled_data = trig_active ? trig_pixel_data : regular_oled_data;
+    wire [15:0] oled_data = poly_active ? poly_pixel_data :
+                            (trig_active ? trig_pixel_data : regular_oled_data);
 
     // ---------------- OLED ----------------
     Oled_Display u_oled (
