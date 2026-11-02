@@ -37,11 +37,11 @@ module trig_ctrl(
             angle <= (angle * 10'd10) + digit;
             digit_count <= digit_count + 3'd1;
             pending_valid <= digit_valid;
-        end else if (pU && digit_count != 3'd0) begin
+        end else if (pU) begin
             function_select <= 2'd0;
-        end else if (pR && digit_count != 3'd0) begin
+        end else if (pR) begin
             function_select <= 2'd1;
-        end else if (pD && digit_count != 3'd0) begin
+        end else if (pD) begin
             function_select <= 2'd2;
         end
     end

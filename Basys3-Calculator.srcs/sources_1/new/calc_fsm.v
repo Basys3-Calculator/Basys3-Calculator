@@ -26,8 +26,8 @@ module calc_fsm (
     output reg  [1:0] op          = 2'd0,
     output reg        op_set      = 1'b0,   // an op has been picked in S_OP
     output reg [7*18-1:0] hist_flat  = 0,
-    output reg [2:0]      hist_count = 3'd0
-
+    output reg [2:0]      hist_count = 3'd0,
+    output reg            div_err    = 1'b0    // Err2: tried to confirm x / 0
 );
     `include "calc_params.vh"
     
@@ -35,6 +35,9 @@ module calc_fsm (
 
     // ---------------- ALU ----------------
     reg signed [7:0] alu_out;
+    reg [7:0] div_num_abs;
+    reg [7:0] div_den_abs;
+    reg [7:0] div_q_abs;
     wire signed [7:0] n1_ext    = {{3{n1[4]}}, n1};
     wire signed [7:0] digit_ext = {{2{digit[5]}}, digit};
     always @(*) begin
@@ -42,7 +45,20 @@ module calc_fsm (
             OP_ADD:  alu_out = n1_ext + digit_ext;
             OP_SUB:  alu_out = n1_ext - digit_ext;
             OP_MUL:  alu_out = n1_ext * digit_ext;
-            OP_DIV:  alu_out = (digit_ext != 0) ? (n1_ext / digit_ext) : 8'sd0;
+            OP_DIV: begin
+                // Division uses round-to-nearest, with exact half cases
+                // rounded away from zero, matching the polynomial solver.
+                if (digit_ext == 0) begin
+                    alu_out = 8'sd0;
+                end else begin
+                    div_num_abs = n1_ext[7] ? -n1_ext : n1_ext;
+                    div_den_abs = digit_ext[7] ? -digit_ext : digit_ext;
+                    div_q_abs = div_num_abs / div_den_abs;
+                    if ((div_num_abs % div_den_abs) * 2 >= div_den_abs)
+                        div_q_abs = div_q_abs + 1'b1;
+                    alu_out = (n1_ext[7] ^ digit_ext[7]) ? -div_q_abs : div_q_abs;
+                end
+            end
             default: alu_out = 8'sd0;
         endcase
     end
@@ -77,10 +93,20 @@ module calc_fsm (
 
             S_N2: begin
                 if (pC && digit_valid) begin
-                    // store finished equation in the next free row, then move down
-                    hist_flat[hist_count*18 +: 18] <= {n1[3:0], op, digit[3:0], alu_out};
-                    hist_count <= hist_count + 3'd1;
-                    state      <= S_N1;
+                    if (op == OP_DIV && digit == 6'sd0) begin
+                        // x / 0: refuse to evaluate, raise Err2 and stay in
+                        // S_N2 so the user can pick a different N2.
+                        div_err <= 1'b1;
+                    end else begin
+                        // store finished equation in the next free row, then move down
+                        hist_flat[hist_count*18 +: 18] <= {n1[3:0], op, digit[3:0], alu_out};
+                        hist_count <= hist_count + 3'd1;
+                        state      <= S_N1;
+                        div_err    <= 1'b0;
+                    end
+                end else if (!(digit_valid && digit == 6'sd0)) begin
+                    // Err2 clears as soon as 0 is no longer the selected digit.
+                    div_err <= 1'b0;
                 end
             end
 

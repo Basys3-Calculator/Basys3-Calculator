@@ -12,13 +12,13 @@ module trig_top(
     input  wire       digit_valid,
     input  wire       digit_conflict,
     input  wire [12:0] pixel_index,
-    output wire [15:0] pixel_data
+    output wire [15:0] pixel_data,
+    output wire        undefined     // tan asymptote (90/270 deg etc.), for Err3
     );
 
     wire [9:0] angle;
     wire [1:0] function_select;
     wire signed [31:0] value;
-    wire undefined;
     wire radian_mode;
     wire [2:0] digit_count;
     wire [3:0] pending_digit;

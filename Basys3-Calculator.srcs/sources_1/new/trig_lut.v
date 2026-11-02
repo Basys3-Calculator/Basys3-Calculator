@@ -13,6 +13,11 @@ module trig_lut(
     integer numerator_abs;
     integer denominator_abs;
     integer phase_x2000;
+    integer sin_display_i;
+    integer cos_display_i;
+    reg signed [63:0] sin_abs64;
+    reg signed [63:0] cos_abs64;
+    reg signed [63:0] tangent_scaled64;
 
     // Internal sine values are scaled by 1000000. The table uses
     // half-degree entries so interpolation is accurate to four decimals.
@@ -260,36 +265,45 @@ module trig_lut(
             phase_x2000 = a * 2000;
         sin_i = sine_fixed_degree(phase_x2000);
         cos_i = sine_fixed_degree(phase_x2000 + 180000);
-        // Convert the interpolated six-decimal values to the 10000 scale
-        // used by the display and tangent quotient, rounding symmetrically.
-        if (sin_i >= 0) sin_i = (sin_i + 50) / 100;
-        else             sin_i = -((-sin_i + 50) / 100);
-        if (cos_i >= 0) cos_i = (cos_i + 50) / 100;
-        else             cos_i = -((-cos_i + 50) / 100);
+        // Round sine/cosine only for their displayed values. Tangent must use
+        // the original 1e6-scale values before rounding, otherwise values near
+        // 90 degrees lose substantial accuracy.
+        if (sin_i >= 0) sin_display_i = (sin_i + 50) / 100;
+        else             sin_display_i = -((-sin_i + 50) / 100);
+        if (cos_i >= 0) cos_display_i = (cos_i + 50) / 100;
+        else             cos_display_i = -((-cos_i + 50) / 100);
         tangent_i = 0;
         numerator_abs = 0;
         denominator_abs = 0;
+        sin_abs64 = sin_i;
+        cos_abs64 = cos_i;
+        if (sin_abs64 < 0) sin_abs64 = -sin_abs64;
+        if (cos_abs64 < 0) cos_abs64 = -cos_abs64;
+        tangent_scaled64 = 64'sd0;
         undefined = 1'b0;
 
         case (function_select)
-            2'd0: value = sin_i;
-            2'd1: value = cos_i;
+            2'd0: value = sin_display_i;
+            2'd1: value = cos_display_i;
             2'd2: begin
-                if (cos_i == 0) begin
+                // The rounded cosine check intentionally remains the guard for
+                // undefined results shown on the OLED.
+                if (cos_display_i == 0) begin
                     undefined = 1'b1;
                     tangent_i = 0;
                 end else begin
-                    // Round the scaled quotient to the nearest 1/10000.
-                    numerator_abs = (sin_i < 0) ? -sin_i : sin_i;
-                    denominator_abs = (cos_i < 0) ? -cos_i : cos_i;
-                    tangent_i = (numerator_abs * 10000 + denominator_abs / 2)
-                                / denominator_abs;
+                    // Round the ratio of the 1e6-scale values to 1/10000.
+                    // The 64-bit product is required because 1e6*10000 does
+                    // not fit in a signed 32-bit intermediate.
+                    tangent_scaled64 = (sin_abs64 * 64'sd10000 +
+                                        cos_abs64 / 2) / cos_abs64;
+                    tangent_i = tangent_scaled64;
                     if ((sin_i < 0) ^ (cos_i < 0))
                         tangent_i = -tangent_i;
                 end
                 value = tangent_i;
             end
-            default: value = sin_i;
+            default: value = sin_display_i;
         endcase
     end
 endmodule

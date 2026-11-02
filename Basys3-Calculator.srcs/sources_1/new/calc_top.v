@@ -26,11 +26,7 @@ module calc_top (
     // Mirror each switch directly to its corresponding user LED.
     assign led = sw;
 
-    // The Basys 3 seven-segment display is active-low. Keep every segment
-    // and digit enable inactive until the display is needed later.
-    assign seg = 7'b1111111;
-    assign dp  = 1'b1;
-    assign an  = 4'b1111;
+    // The seven-segment display shows Err0-Err3 (see "error codes" below).
 
     // ---------------- clocks ----------------
     wire clk6p25m;
@@ -102,6 +98,8 @@ module calc_top (
     wire [1:0]  diff_view;
     wire [7*18-1:0] hist_flat;
     wire [2:0]  hist_count;
+    wire        div_err;
+    wire        trig_undefined;
     wire [12:0] pixel_index;
 
     // Trigonometric renderer. It reuses the main OLED controller and the
@@ -119,7 +117,8 @@ module calc_top (
         .digit_valid (digit_valid),
         .digit_conflict (digit_conflict),
         .pixel_index (pixel_index),
-        .pixel_data  (trig_pixel_data)
+        .pixel_data  (trig_pixel_data),
+        .undefined   (trig_undefined)
     );
 
     // ---------------- polynomial root finder ----------------
@@ -160,6 +159,7 @@ module calc_top (
         .c_neg(poly_c_neg), .c_mag(poly_c_mag),
         .rtype(poly_rtype), .r1_neg(poly_r1_neg), .r1_mag(poly_r1_mag),
         .r2_neg(poly_r2_neg), .r2_mag(poly_r2_mag),
+        .digit_conflict(digit_conflict),
         .pixel_data(poly_pixel_data)
     );
 
@@ -177,7 +177,8 @@ module calc_top (
         .op          (op),
         .op_set      (op_set),
         .hist_flat   (hist_flat),
-        .hist_count (hist_count)
+        .hist_count  (hist_count),
+        .div_err     (div_err)
     );
 
     diff_num_rep u_diff (
@@ -192,6 +193,35 @@ module calc_top (
         .value       (diff_value),
         .digit_count (diff_digit_count),
         .view        (diff_view)
+    );
+
+    // ---------------- error codes -> seven-segment ----------------
+    // Highest priority first. Only one code is shown at a time.
+    //   Err0: two or more mode switches (sw11-14) on
+    //   Err1: two or more digit switches (sw0-9) on, inside an active mode
+    //   Err2: btnC pressed on x / 0 in calculator mode (held until 0 deselected)
+    //   Err3: tan is undefined in trig mode (90, 270, 450 ... deg)
+    wire mode_active = calc_active || diff_active || trig_active || poly_active;
+
+    reg       err_valid;
+    reg [1:0] err_code;
+    always @(*) begin
+        err_valid = 1'b1;
+        err_code  = 2'd0;
+        if      (mode_conflict)                 err_code = 2'd0;
+        else if (digit_conflict && mode_active) err_code = 2'd1;
+        else if (div_err && calc_active)        err_code = 2'd2;
+        else if (trig_undefined && trig_active) err_code = 2'd3;
+        else                                    err_valid = 1'b0;
+    end
+
+    err_display u_err (
+        .clk       (clk),
+        .err_valid (err_valid),
+        .err_code  (err_code),
+        .seg       (seg),
+        .an        (an),
+        .dp        (dp)
     );
 
     // ---------------- values -> character codes ----------------
@@ -277,10 +307,21 @@ module calc_top (
                 normal_char_code = n1;
             else if (char_col == 4'd1 && state == S_N2)
                 normal_char_code = op_char;
-        end else if (char_row == 3'd7 && char_col == 4'd0) begin
+        end else if (char_row == 3'd7) begin
             case (state)
-                S_N1, S_N2: if (digit_valid) normal_char_code = digit;
-                S_OP:       if (op_set)      normal_char_code = op_char;
+                S_N1: if (char_col == 4'd4 && digit_valid)
+                          normal_char_code = digit;
+                S_OP: begin
+                    if (char_col == 4'd0) normal_char_code = n1;
+                    else if (char_col == 4'd4 && op_set)
+                        normal_char_code = op_char;
+                end
+                S_N2: begin
+                    if (char_col == 4'd0) normal_char_code = n1;
+                    else if (char_col == 4'd1) normal_char_code = op_char;
+                    else if (char_col == 4'd4 && digit_valid)
+                        normal_char_code = digit;
+                end
                 default:    normal_char_code = CH_SPACE;
             endcase
         end
@@ -406,7 +447,7 @@ module calc_top (
                         default: menu_char_code = CH_SPACE;
                     endcase
                 end
-                3'd2: begin
+                3'd1: begin
                     case (compact_col)
                         4'd0: menu_char_code = CH_1;
                         4'd1: menu_char_code = CH_1;
@@ -424,7 +465,7 @@ module calc_top (
                         default: menu_char_code = CH_SPACE;
                     endcase
                 end
-                3'd4: begin
+                3'd3: begin
                     case (compact_col)
                         4'd0: menu_char_code = CH_1;
                         4'd1: menu_char_code = CH_2;
@@ -441,7 +482,7 @@ module calc_top (
                         default: menu_char_code = CH_SPACE;
                     endcase
                 end
-                3'd6: begin
+                3'd5: begin
                     case (compact_col)
                         4'd0: menu_char_code = CH_1;
                         4'd1: menu_char_code = CH_3;
@@ -450,18 +491,11 @@ module calc_top (
                         4'd5: menu_char_code = CH_R;
                         4'd6: menu_char_code = CH_I;
                         4'd7: menu_char_code = CH_G;
-                        4'd9: menu_char_code = CH_1;
-                        4'd10: menu_char_code = CH_4;
-                        4'd11: menu_char_code = CH_COLON;
-                        4'd12: menu_char_code = CH_R;
-                        4'd13: menu_char_code = CH_O;
-                        4'd14: menu_char_code = CH_O;
-                        4'd15: menu_char_code = CH_T;
                         default: menu_char_code = CH_SPACE;
                     endcase
                 end
                 3'd7: begin
-                    // Polynomial mode is shown on its own bottom menu row.
+                    // Polynomial mode is shown as one complete menu item.
                     case (compact_col)
                         4'd0: menu_char_code = CH_1;
                         4'd1: menu_char_code = CH_4;
@@ -572,11 +606,12 @@ module calc_top (
         mode_conflict ? 16'hFBE0 :
         ((digit_conflict && (calc_active || diff_active) &&
           (char_row == 3'd6 || char_row == 3'd7)) ? 16'hFBE0 :
-        (((calc_active || (diff_active && diff_view == 2'd0)) &&
-          char_row == 3'd7 && char_col == 4'd0) ? 16'h07FF : 16'hFFFF));
+        (((calc_active && char_row == 3'd7 && char_col == 4'd4) ||
+          (diff_active && diff_view == 2'd0 && char_row == 3'd7 && char_col == 4'd0))
+          ? 16'h07FF : 16'hFFFF));
 
     wire [15:0] regular_oled_data = (mode_select || mode_conflict) ?
-                                    (font_row[7 - compact_gx] ? regular_text_color : 16'h0000) :
+                                    (font_row[6 - compact_gx] ? regular_text_color : 16'h0000) :
                                     (font_row[7 - gx] ? regular_text_color : 16'h0000);
     wire [15:0] oled_data = poly_active ? poly_pixel_data :
                             (trig_active ? trig_pixel_data : regular_oled_data);

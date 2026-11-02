@@ -3,6 +3,7 @@ module poly_display (
     input wire clk, input wire [12:0] pixel_index,
     input wire [2:0] state, input wire quad, input wire mode_set,
     input wire sw_neg, input wire [3:0] digit, input wire digit_valid,
+    input wire digit_conflict,
     input wire a_neg, input wire [3:0] a_mag, input wire b_neg, input wire [3:0] b_mag,
     input wire c_neg, input wire [3:0] c_mag, input wire [2:0] rtype,
     input wire r1_neg, input wire [9:0] r1_mag, input wire r2_neg, input wire [9:0] r2_mag,
@@ -30,7 +31,14 @@ module poly_display (
     always @(*) begin
         ch=CH_SPACE;
         case(row)
-            0: if(quad) begin
+            0: if (state==P_S_MODE && !mode_set) begin
+                case(col)
+                    0:ch=CH_B; 1:ch=CH_T; 2:ch=CH_N; 4:ch=CH_U; 5:ch=CH_COLON;
+                    7:ch=CH_L; 8:ch=CH_I; 9:ch=CH_N; 10:ch=CH_E; 11:ch=CH_A;
+                    12:ch=CH_R;
+                    default:;
+                endcase
+            end else if(quad) begin
                 case(col) 0:if(show_a)ch=a_sgn;1:if(show_a)ch=a_mag;2:if(show_a)ch=CH_X;3:if(show_a)ch=CH_SQ;
                     4:if(show_b)ch=b_sgn;5:if(show_b)ch=b_mag;6:if(show_b)ch=CH_X;7:if(show_c)ch=c_sgn;
                     8:if(show_c)ch=c_mag;9:if(show_c)ch=CH_EQ;10:if(show_c)ch=CH_0; default:; endcase
@@ -38,17 +46,26 @@ module poly_display (
                 case(col) 0:if(show_a)ch=a_sgn;1:if(show_a)ch=a_mag;2:if(show_a)ch=CH_X;3:if(show_b)ch=b_sgn;
                     4:if(show_b)ch=b_mag;5:if(show_eq_lin)ch=CH_EQ;6:if(show_eq_lin)ch=CH_0; default:; endcase
             end
+            1: if (state==P_S_MODE && !mode_set) begin
+                case(col)
+                    0:ch=CH_B; 1:ch=CH_T; 2:ch=CH_N; 4:ch=CH_D; 5:ch=CH_COLON;
+                    7:ch=CH_Q; 8:ch=CH_U; 9:ch=CH_A; 10:ch=CH_D; 11:ch=CH_R;
+                    12:ch=CH_A; 13:ch=CH_T; 14:ch=CH_I; 15:ch=CH_C;
+                    default:;
+                endcase
+            end
             2: if(state==P_S_RES) case(rtype)
                 P_RT_NONE: case(col) 0:ch=CH_N;1:ch=CH_O;3:ch=CH_R;4:ch=CH_O;5:ch=CH_O;6:ch=CH_T;default:;endcase
                 P_RT_ALL: case(col) 0:ch=CH_A;1:ch=CH_L;2:ch=CH_L;4:ch=CH_X;default:;endcase
-                P_RT_ONE,P_RT_CPX: begin if(col==0)ch=CH_X; else if(col==1)ch=CH_EQ; else ch=val_char(col-2,r1_neg,r1_i,r1_t,r1_o); end
+                P_RT_ONE: begin if(col==0)ch=CH_X; else if(col==1)ch=CH_EQ; else ch=val_char(col-2,r1_neg,r1_i,r1_t,r1_o); end
+                P_RT_CPX: begin if(col==0)ch=CH_X; else if(col==1)ch=CH_EQ; else ch=val_char(col-2,r1_neg,r1_i,r1_t,r1_o); end
                 P_RT_DBL: begin case(col) 0:ch=CH_X;1:ch=CH_1;2:ch=CH_EQ;3:ch=CH_X;4:ch=CH_2;5:ch=CH_EQ;default:ch=val_char(col-6,r1_neg,r1_i,r1_t,r1_o);endcase end
                 P_RT_TWO: begin if(col==0)ch=CH_X; else if(col==1)ch=CH_1; else if(col==2)ch=CH_EQ; else ch=val_char(col-3,r1_neg,r1_i,r1_t,r1_o); end
                 default:;
             endcase
             3: if(state==P_S_RES) case(rtype)
                 P_RT_TWO: begin if(col==0)ch=CH_X; else if(col==1)ch=CH_2; else if(col==2)ch=CH_EQ; else ch=val_char(col-3,r2_neg,r2_i,r2_t,r2_o); end
-                P_RT_CPX: begin if(col==2)ch=CH_PM; else if(col==7)ch=CH_I; else if(col>=3&&col<=6)ch=val_char(col-2,1'b0,r2_i,r2_t,r2_o); end
+                P_RT_CPX: begin if(col==2)ch=CH_PM; else if(col==7)ch=CH_i; else if(col>=3&&col<=6)ch=val_char(col-2,1'b0,r2_i,r2_t,r2_o); end
                 default:;
             endcase
             6: case(state)
@@ -61,8 +78,25 @@ module poly_display (
             endcase
             default:;
         endcase
+        if (digit_conflict && (row == 3'd6 || row == 3'd7)) begin
+            if (row == 3'd6) begin
+                case(col)
+                    1:ch=CH_S; 2:ch=CH_E; 3:ch=CH_L; 4:ch=CH_E;
+                    5:ch=CH_C; 6:ch=CH_T; 8:ch=CH_O; 9:ch=CH_N;
+                    10:ch=CH_E; default:ch=CH_SPACE;
+                endcase
+            end else begin
+                case(col)
+                    1:ch=CH_D; 2:ch=CH_I; 3:ch=CH_G; 4:ch=CH_I;
+                    5:ch=CH_T; 7:ch=CH_O; 8:ch=CH_N; 9:ch=CH_L;
+                    10:ch=CH_Y; default:ch=CH_SPACE;
+                endcase
+            end
+        end
     end
     wire [7:0] bits;
     font_rom u_font(.char_code(ch),.row(gy),.bits(bits));
-    assign pixel_data=bits[7-gx]?16'hFFFF:16'h0000;
+    assign pixel_data=bits[7-gx] ?
+        ((digit_conflict && (row == 3'd6 || row == 3'd7)) ? 16'hFBE0 : 16'hFFFF) :
+        16'h0000;
 endmodule

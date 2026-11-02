@@ -53,6 +53,7 @@ module font_rom (
             CH_L:     glyph = 64'h60_60_60_60_60_60_7E_00;
             CH_M:     glyph = 64'h63_77_7F_6B_63_63_63_00;
             CH_P:     glyph = 64'h7C_66_66_7C_60_60_60_00;
+            CH_Q:     glyph = 64'h3C_66_66_66_6E_3C_0E_00;
             CH_R:     glyph = 64'h7C_66_66_7C_78_6C_66_00;
             CH_S:     glyph = 64'h3C_66_60_3C_06_66_3C_00;
             CH_U:     glyph = 64'h66_66_66_66_66_66_3C_00;
@@ -65,6 +66,7 @@ module font_rom (
             CH_Y:     glyph = 64'h66_66_3C_18_18_18_18_00;
             CH_SQ:    glyph = 64'h7C_0E_1C_38_70_7E_00_00;
             CH_PM:    glyph = 64'h18_18_7E_18_18_00_7E_00;
+            CH_i:     glyph = 64'h00_18_00_38_18_18_3C_00;
             default:  glyph = 64'h00_00_00_00_00_00_00_00;   // CH_SPACE
         endcase
     end
