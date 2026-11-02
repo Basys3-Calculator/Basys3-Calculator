@@ -8,15 +8,21 @@ This project is an integrated FPGA-based calculator system for the Digilent Basy
 
 ## Hardware controls and mode selection
 
-Only one of switches 11–14 should be on at a time. `SW10` is ignored for mode selection:
+Only one of switches `SW11`–`SW14` should be on at a time:
 
 | Switch | Function |
 |---|---|
-| `SW10` | Reserved / ignored by mode selection |
 | `SW11` | Operations calculator |
 | `SW12` | Number-representation converter |
 | `SW13` | Trigonometric functions |
 | `SW14` | Polynomial root solver |
+
+### Switch functions
+
+| Switch | Function |
+|---|---|
+| `SW0`–`SW9` | One-hot decimal digit selection |
+| `SW10` | Negative-sign selector for polynomial coefficients |
 
 With `SW11`–`SW14` all off, the OLED displays the centered mode-selection header `- SELECT MODE -`. If more than one mode selector is on, it displays:
 
@@ -25,7 +31,7 @@ SELECT ONE
 MODE ONLY
 ```
 
-The LEDs mirror the switch states. Switches `SW0`–`SW9` are one-hot digit inputs. When two or more digit switches are on in an active input mode, the OLED displays:
+The LEDs mirror the switch states. When two or more digit switches in `SW0`–`SW9` are on in an active input mode, the OLED displays:
 
 ```text
 SELECT ONE
