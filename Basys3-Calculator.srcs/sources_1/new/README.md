@@ -1,19 +1,56 @@
 # Basys3 Calculator
 
-This directory contains the Verilog source files for the Basys3 calculator, its OLED interface, and the trigonometric-function mode.
+This directory contains the Verilog source files for the Basys3 calculator, its OLED interface, and its four calculator modes.
 
-## Group theme
+## Overview
 
-This project is an integrated FPGA-based calculator system for the Digilent Basys3 board. It combines a normal arithmetic calculator, a number-representation converter, and a trigonometric calculator behind a shared switch-and-button interface. Results and input status are presented on the onboard OLED display, while the LEDs provide immediate switch-state feedback. The system's main capabilities include four basic arithmetic operations, decimal-to-binary/octal/hexadecimal conversion, three-digit sine/cosine/tangent calculations with four-decimal-place results, degree/radian selection, tangent undefined detection, and input validation when multiple digit switches are selected. Together, these components demonstrate interactive digital computation, fixed-point lookup-table calculations, mode control, and hardware display interfacing on the Basys3 FPGA platform.
+This project is an integrated FPGA-based calculator system for the Digilent Basys3 board. It combines an arithmetic calculator, a number-representation converter, a trigonometric calculator, and a polynomial root solver behind a shared switch-and-button interface. Results and input status are presented on the onboard OLED display, while the LEDs provide immediate switch-state feedback. The system demonstrates interactive digital computation, fixed-point lookup-table calculations, quadratic-root solving, mode control, and hardware display interfacing on the Basys3 FPGA platform.
+
+## Hardware controls and mode selection
+
+Only one of switches 11–14 should be on at a time. `SW10` is ignored for mode selection:
+
+| Switch | Function |
+|---|---|
+| `SW10` | Reserved / ignored by mode selection |
+| `SW11` | Operations calculator |
+| `SW12` | Number-representation converter |
+| `SW13` | Trigonometric functions |
+| `SW14` | Polynomial root solver |
+
+With `SW11`–`SW14` all off, the OLED displays the centered mode-selection header `- SELECT MODE -`. If more than one mode selector is on, it displays:
+
+```text
+SELECT ONE
+MODE ONLY
+```
+
+The LEDs mirror the switch states. Switches `SW0`–`SW9` are one-hot digit inputs. When two or more digit switches are on in an active input mode, the OLED displays:
+
+```text
+SELECT ONE
+DIGIT ONLY
+```
+
+Pushbutton functions depend on the selected mode:
+
+| Button | Arithmetic | Conversion | Trigonometry | Polynomial |
+|---|---|---|---|---|
+| `btnU` | Add | Binary | Sine | Linear mode |
+| `btnD` | Subtract | Hexadecimal | Tangent | Quadratic mode |
+| `btnL` | Multiply | Decimal | Toggle degrees/radians | Reset entry |
+| `btnR` | Divide | Octal | Cosine | — |
+| `btnC` | Confirm | Confirm/clear | Confirm/clear | Confirm/advance |
 
 ## User workflow
 
 1. Power the Basys3 board and wait for the OLED to initialize.
-2. Select one operating mode using `SW11`, `SW12`, or `SW13`:
+2. Select one operating mode using `SW11`, `SW12`, `SW13`, or `SW14`:
    - `SW11` for arithmetic operations.
    - `SW12` for number conversion.
    - `SW13` for trigonometric functions.
-   - Leave `SW11`–`SW13` off to return to the mode-selection screen. `SW10` does not affect mode selection.
+   - `SW14` for polynomial root solving.
+   - Leave `SW11`–`SW14` off to return to the mode-selection screen. `SW10` does not affect mode selection.
 3. In any mode, select a digit by turning on exactly one of `SW0`–`SW9`. The corresponding LED turns on. If multiple digit switches are on, follow the OLED instruction `SELECT ONE / DIGIT ONLY` before continuing.
 4. When finished with a mode, turn off its mode switch before selecting another mode. Each mode retains its internal state while inactive.
 
@@ -44,6 +81,14 @@ This project is an integrated FPGA-based calculator system for the Digilent Basy
 6. For tangent, an input at an odd multiple of 90 degrees is displayed as `UNDEFINED` instead of a clamped numerical value.
 7. Press `btnC` with no digit selected, or after three digits have been entered, to clear the trigonometric input. The selected function and degree/radian setting are preserved.
 
+### Polynomial root solving
+
+1. Select `SW14`.
+2. Press `btnU` for a linear equation (`Ax + B = 0`) or `btnD` for a quadratic equation (`Ax² + Bx + C = 0`), then press `btnC` to confirm the mode.
+3. Enter each coefficient in order with `SW0`–`SW9` and `btnC`. Turn on `SW10` while entering a non-zero coefficient to make it negative.
+4. Read the result on the OLED. The solver can report a real root, repeated roots, complex roots, or no real roots.
+5. Press `btnC` to return to polynomial mode selection, or `btnL` to reset the current polynomial entry.
+
 ### Indicators and display behavior
 
 - Each switch has a corresponding LED indicator.
@@ -51,36 +96,9 @@ This project is an integrated FPGA-based calculator system for the Digilent Basy
 - Error messages use reddish orange, while the pending bottom-left digit or operator uses cyan.
 - The seven-segment display is intentionally disabled and remains off. Its outputs are driven to the inactive state so it can be used for a future feature.
 
-## Mode selection
-
-Only one of switches 11–13 should be on at a time. `SW10` is ignored for mode selection:
-
-| Switch | Function |
-|---|---|
-| `SW10` | Reserved / ignored by mode selection |
-| `SW11` | Operations calculator |
-| `SW12` | Number-representation converter |
-| `SW13` | Trigonometric functions |
-
-With `SW11`–`SW13` all off, the OLED displays the centered mode-selection header `- SELECT MODE -`. If more than one of those three mode selectors is on, it displays:
-
-```text
-SELECT ONE
-MODE ONLY
-```
-
-The LEDs mirror the switch states.
-
-Switches `SW0`–`SW9` are one-hot digit inputs. When two or more digit switches are on in an active input mode, the OLED displays the centered warning:
-
-```text
-SELECT ONE
-DIGIT ONLY
-```
-
 ## Operations mode (`SW11`)
 
-The normal calculator is implemented by `calc_fsm.v`. It supports addition, subtraction, multiplication, and division using the calculator's pushbuttons. Negative subtraction results are clamped to zero, and division by zero produces zero. The current implementation enters single decimal digits for the operands.
+The normal calculator is implemented by `calc_fsm.v`. It supports addition, subtraction, multiplication, and division using the calculator's pushbuttons. Division by zero produces zero. The current implementation enters single decimal digits for the operands.
 
 ## Number-representation mode (`SW12`)
 
@@ -130,6 +148,10 @@ The result is displayed to four decimal places with rounding in both directions.
 
 The trigonometric implementation uses a half-degree sine lookup table with higher internal precision. Cosine is calculated using a 90-degree phase shift, and tangent is calculated from the sine/cosine ratio. Degree inputs are normalized by the lookup-table period; radian inputs retain the fractional conversion constant before interpolation and are rounded only when producing the four-decimal-place result.
 
+## Polynomial mode (`SW14`)
+
+`poly_fsm.v`, `poly_solver.v`, and `poly_display.v` implement linear and quadratic equations. Linear mode solves `Ax + B = 0`; quadratic mode solves `Ax² + Bx + C = 0`. Coefficients are single decimal digits, with `SW10` selecting a negative sign for non-zero coefficients. The solver uses fixed-point arithmetic and an integer square-root helper, and displays real, repeated, complex, or no-real-root outcomes.
+
 ## Verilog source files
 
 ### `calc_top.v`
@@ -163,6 +185,22 @@ Generates the character codes for the trigonometric expression, result, pending 
 ### `trig_display.v`
 
 Connects trigonometric calculation state to the character renderer.
+
+### `poly_fsm.v`
+
+Controls polynomial mode selection, coefficient entry, sign selection, and solver sequencing.
+
+### `poly_solver.v`
+
+Solves the selected linear or quadratic equation and classifies the roots.
+
+### `poly_display.v`
+
+Renders polynomial coefficients and root results on the OLED.
+
+### `int_sqrt.v` and `udiv.v`
+
+Arithmetic helpers used by the polynomial solver.
 
 ### `sw_encoder.v`
 
