@@ -33,9 +33,9 @@ module poly_display (
         case(row)
             0: if (state==P_S_MODE && !mode_set) begin
                 case(col)
-                    0:ch=CH_B; 1:ch=CH_T; 2:ch=CH_N; 4:ch=CH_U; 5:ch=CH_COLON;
-                    7:ch=CH_L; 8:ch=CH_I; 9:ch=CH_N; 10:ch=CH_E; 11:ch=CH_A;
-                    12:ch=CH_R;
+                    0:ch=CH_U; 1:ch=CH_COLON;
+                    3:ch=CH_L; 4:ch=CH_I; 5:ch=CH_N; 6:ch=CH_E;
+                    7:ch=CH_A; 8:ch=CH_R;
                     default:;
                 endcase
             end else if(quad) begin
@@ -48,9 +48,9 @@ module poly_display (
             end
             1: if (state==P_S_MODE && !mode_set) begin
                 case(col)
-                    0:ch=CH_B; 1:ch=CH_T; 2:ch=CH_N; 4:ch=CH_D; 5:ch=CH_COLON;
-                    7:ch=CH_Q; 8:ch=CH_U; 9:ch=CH_A; 10:ch=CH_D; 11:ch=CH_R;
-                    12:ch=CH_A; 13:ch=CH_T; 14:ch=CH_I; 15:ch=CH_C;
+                    0:ch=CH_D; 1:ch=CH_COLON;
+                    3:ch=CH_Q; 4:ch=CH_U; 5:ch=CH_A; 6:ch=CH_D;
+                    7:ch=CH_R; 8:ch=CH_A; 9:ch=CH_T; 10:ch=CH_I; 11:ch=CH_C;
                     default:;
                 endcase
             end

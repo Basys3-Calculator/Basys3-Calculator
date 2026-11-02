@@ -254,6 +254,108 @@ module trig_lut(
         end
     endfunction
 
+    // Integer-degree tangent values are kept directly at 1e-4 precision.
+    // This avoids magnifying 1e6-scale sine/cosine quantization near 90 degrees.
+    function signed [31:0] tangent_degree_mag;
+        input integer degree;
+        begin
+            case (degree)
+                0: tangent_degree_mag = 32'sd0;
+                1: tangent_degree_mag = 32'sd175;
+                2: tangent_degree_mag = 32'sd349;
+                3: tangent_degree_mag = 32'sd524;
+                4: tangent_degree_mag = 32'sd699;
+                5: tangent_degree_mag = 32'sd875;
+                6: tangent_degree_mag = 32'sd1051;
+                7: tangent_degree_mag = 32'sd1228;
+                8: tangent_degree_mag = 32'sd1405;
+                9: tangent_degree_mag = 32'sd1584;
+                10: tangent_degree_mag = 32'sd1763;
+                11: tangent_degree_mag = 32'sd1944;
+                12: tangent_degree_mag = 32'sd2126;
+                13: tangent_degree_mag = 32'sd2309;
+                14: tangent_degree_mag = 32'sd2493;
+                15: tangent_degree_mag = 32'sd2679;
+                16: tangent_degree_mag = 32'sd2867;
+                17: tangent_degree_mag = 32'sd3057;
+                18: tangent_degree_mag = 32'sd3249;
+                19: tangent_degree_mag = 32'sd3443;
+                20: tangent_degree_mag = 32'sd3640;
+                21: tangent_degree_mag = 32'sd3839;
+                22: tangent_degree_mag = 32'sd4040;
+                23: tangent_degree_mag = 32'sd4245;
+                24: tangent_degree_mag = 32'sd4452;
+                25: tangent_degree_mag = 32'sd4663;
+                26: tangent_degree_mag = 32'sd4877;
+                27: tangent_degree_mag = 32'sd5095;
+                28: tangent_degree_mag = 32'sd5317;
+                29: tangent_degree_mag = 32'sd5543;
+                30: tangent_degree_mag = 32'sd5774;
+                31: tangent_degree_mag = 32'sd6009;
+                32: tangent_degree_mag = 32'sd6249;
+                33: tangent_degree_mag = 32'sd6494;
+                34: tangent_degree_mag = 32'sd6745;
+                35: tangent_degree_mag = 32'sd7002;
+                36: tangent_degree_mag = 32'sd7265;
+                37: tangent_degree_mag = 32'sd7536;
+                38: tangent_degree_mag = 32'sd7813;
+                39: tangent_degree_mag = 32'sd8098;
+                40: tangent_degree_mag = 32'sd8391;
+                41: tangent_degree_mag = 32'sd8693;
+                42: tangent_degree_mag = 32'sd9004;
+                43: tangent_degree_mag = 32'sd9325;
+                44: tangent_degree_mag = 32'sd9657;
+                45: tangent_degree_mag = 32'sd10000;
+                46: tangent_degree_mag = 32'sd10355;
+                47: tangent_degree_mag = 32'sd10724;
+                48: tangent_degree_mag = 32'sd11106;
+                49: tangent_degree_mag = 32'sd11504;
+                50: tangent_degree_mag = 32'sd11918;
+                51: tangent_degree_mag = 32'sd12349;
+                52: tangent_degree_mag = 32'sd12799;
+                53: tangent_degree_mag = 32'sd13270;
+                54: tangent_degree_mag = 32'sd13764;
+                55: tangent_degree_mag = 32'sd14281;
+                56: tangent_degree_mag = 32'sd14826;
+                57: tangent_degree_mag = 32'sd15399;
+                58: tangent_degree_mag = 32'sd16003;
+                59: tangent_degree_mag = 32'sd16643;
+                60: tangent_degree_mag = 32'sd17321;
+                61: tangent_degree_mag = 32'sd18040;
+                62: tangent_degree_mag = 32'sd18807;
+                63: tangent_degree_mag = 32'sd19626;
+                64: tangent_degree_mag = 32'sd20503;
+                65: tangent_degree_mag = 32'sd21445;
+                66: tangent_degree_mag = 32'sd22460;
+                67: tangent_degree_mag = 32'sd23559;
+                68: tangent_degree_mag = 32'sd24751;
+                69: tangent_degree_mag = 32'sd26051;
+                70: tangent_degree_mag = 32'sd27475;
+                71: tangent_degree_mag = 32'sd29042;
+                72: tangent_degree_mag = 32'sd30777;
+                73: tangent_degree_mag = 32'sd32709;
+                74: tangent_degree_mag = 32'sd34874;
+                75: tangent_degree_mag = 32'sd37321;
+                76: tangent_degree_mag = 32'sd40108;
+                77: tangent_degree_mag = 32'sd43315;
+                78: tangent_degree_mag = 32'sd47046;
+                79: tangent_degree_mag = 32'sd51446;
+                80: tangent_degree_mag = 32'sd56713;
+                81: tangent_degree_mag = 32'sd63138;
+                82: tangent_degree_mag = 32'sd71154;
+                83: tangent_degree_mag = 32'sd81443;
+                84: tangent_degree_mag = 32'sd95144;
+                85: tangent_degree_mag = 32'sd114301;
+                86: tangent_degree_mag = 32'sd143007;
+                87: tangent_degree_mag = 32'sd190811;
+                88: tangent_degree_mag = 32'sd286363;
+                89: tangent_degree_mag = 32'sd572900;
+                default: tangent_degree_mag = 32'sd0;
+            endcase
+        end
+    endfunction
+
+
     always @(*) begin
         a = angle;
         if (radian_mode)
@@ -291,6 +393,14 @@ module trig_lut(
                 if (cos_display_i == 0) begin
                     undefined = 1'b1;
                     tangent_i = 0;
+                end else if (!radian_mode) begin
+                    // For whole-degree input, use the direct 1e-4 table.
+                    // tan(theta + 180) = tan(theta), and
+                    // tan(180-theta) = -tan(theta).
+                    if ((a % 180) < 90)
+                        tangent_i = tangent_degree_mag(a % 180);
+                    else
+                        tangent_i = -tangent_degree_mag(180 - (a % 180));
                 end else begin
                     // Round the ratio of the 1e6-scale values to 1/10000.
                     // The 64-bit product is required because 1e6*10000 does
@@ -298,9 +408,11 @@ module trig_lut(
                     tangent_scaled64 = (sin_abs64 * 64'sd10000 +
                                         cos_abs64 / 2) / cos_abs64;
                     tangent_i = tangent_scaled64;
-                    if ((sin_i < 0) ^ (cos_i < 0))
-                        tangent_i = -tangent_i;
                 end
+                if (radian_mode && ((sin_i < 0) ^ (cos_i < 0)))
+                    tangent_i = -tangent_i;
+                else if (!radian_mode && ((a % 360) >= 180 && (a % 180) < 90))
+                    tangent_i = -tangent_i;
                 value = tangent_i;
             end
             default: value = sin_display_i;

@@ -239,6 +239,21 @@ module calc_top (
     wire [2:0] compact_gx  = x % 6;
     wire [2:0] compact_gy  = y % 8;
 
+    // Five 8-pixel menu lines, separated evenly by 6 pixels.
+    wire [2:0] menu_row = (y < 6'd8)  ? 3'd0 :
+                          (y < 6'd22) ? 3'd1 :
+                          (y < 6'd36) ? 3'd2 :
+                          (y < 6'd50) ? 3'd3 : 3'd4;
+    wire [2:0] menu_gy  = (menu_row == 3'd0) ? y :
+                          (menu_row == 3'd1) ? (y - 6'd14) :
+                          (menu_row == 3'd2) ? (y - 6'd28) :
+                          (menu_row == 3'd3) ? (y - 6'd42) : (y - 6'd56);
+    wire       menu_active = (y < 6'd8) ||
+                             ((y >= 6'd14) && (y < 6'd22)) ||
+                             ((y >= 6'd28) && (y < 6'd36)) ||
+                             ((y >= 6'd42) && (y < 6'd50)) ||
+                             (y >= 6'd56);
+
     // 96 x 64 resolution makes for 12 x 8 grid of characters
     wire [3:0] char_col = x[6:3];
     wire [2:0] char_row = y[5:3];
@@ -307,21 +322,10 @@ module calc_top (
                 normal_char_code = n1;
             else if (char_col == 4'd1 && state == S_N2)
                 normal_char_code = op_char;
-        end else if (char_row == 3'd7) begin
+        end else if (char_row == 3'd7 && char_col == 4'd0) begin
             case (state)
-                S_N1: if (char_col == 4'd4 && digit_valid)
-                          normal_char_code = digit;
-                S_OP: begin
-                    if (char_col == 4'd0) normal_char_code = n1;
-                    else if (char_col == 4'd4 && op_set)
-                        normal_char_code = op_char;
-                end
-                S_N2: begin
-                    if (char_col == 4'd0) normal_char_code = n1;
-                    else if (char_col == 4'd1) normal_char_code = op_char;
-                    else if (char_col == 4'd4 && digit_valid)
-                        normal_char_code = digit;
-                end
+                S_N1, S_N2: if (digit_valid) normal_char_code = digit;
+                S_OP:       if (op_set)      normal_char_code = op_char;
                 default:    normal_char_code = CH_SPACE;
             endcase
         end
@@ -427,9 +431,9 @@ module calc_top (
 
     // The normal mode-selection labels use 6x8 cells. The longer mode-
     // conflict message uses 5x8 cells so both requested lines fit.
-    // The strings are placed on menu rows 0, 1, 3, and 5.
-        if (mode_select) begin
-            case (compact_row)
+    // The five strings use evenly spaced menu bands.
+        if (mode_select && menu_active) begin
+            case (menu_row)
                 3'd0: begin
                     case (compact_col)
                         4'd0: menu_char_code = CH_MINUS;
@@ -465,7 +469,7 @@ module calc_top (
                         default: menu_char_code = CH_SPACE;
                     endcase
                 end
-                3'd3: begin
+                3'd2: begin
                     case (compact_col)
                         4'd0: menu_char_code = CH_1;
                         4'd1: menu_char_code = CH_2;
@@ -482,7 +486,7 @@ module calc_top (
                         default: menu_char_code = CH_SPACE;
                     endcase
                 end
-                3'd5: begin
+                3'd3: begin
                     case (compact_col)
                         4'd0: menu_char_code = CH_1;
                         4'd1: menu_char_code = CH_3;
@@ -491,10 +495,15 @@ module calc_top (
                         4'd5: menu_char_code = CH_R;
                         4'd6: menu_char_code = CH_I;
                         4'd7: menu_char_code = CH_G;
+                        4'd8: menu_char_code = CH_O;
+                        4'd10: menu_char_code = CH_F;
+                        4'd11: menu_char_code = CH_U;
+                        4'd12: menu_char_code = CH_N;
+                        4'd13: menu_char_code = CH_C;
                         default: menu_char_code = CH_SPACE;
                     endcase
                 end
-                3'd7: begin
+                3'd4: begin
                     // Polynomial mode is shown as one complete menu item.
                     case (compact_col)
                         4'd0: menu_char_code = CH_1;
@@ -596,19 +605,23 @@ module calc_top (
     wire [7:0] font_row;
     font_rom u_font (
         .char_code (char_code),
-        .row       (mode_select || mode_conflict ? compact_gy : gy),
+        .row       (mode_select ? menu_gy :
+                    (mode_conflict ? compact_gy : gy)),
         .bits      (font_row)
     );
 
-    // RGB565 text colors: white for normal content, reddish orange for
-    // errors, and cyan for the pending bottom-left input/operator indicator.
+    // RGB565 colors: FBE0 = orange, 07E0 = green, FFE0 = yellow,
+    // 07FF = cyan, FFFF = white, and 0000 = black/background.
+    // Yellow marks representation labels, green marks confirmed values, and
+    // cyan marks the pending bottom-left input/operator indicator.
     wire [15:0] regular_text_color =
         mode_conflict ? 16'hFBE0 :
         ((digit_conflict && (calc_active || diff_active) &&
           (char_row == 3'd6 || char_row == 3'd7)) ? 16'hFBE0 :
-        (((calc_active && char_row == 3'd7 && char_col == 4'd4) ||
-          (diff_active && diff_view == 2'd0 && char_row == 3'd7 && char_col == 4'd0))
-          ? 16'h07FF : 16'hFFFF));
+        (((diff_active && char_row == 3'd0 && char_col <= 4'd2)) ? 16'hFFE0 :
+        ((diff_active && char_row == 3'd1) ? 16'h07E0 :
+        (((calc_active || (diff_active && diff_view == 2'd0)) &&
+          char_row == 3'd7 && char_col == 4'd0) ? 16'h07FF : 16'hFFFF))));
 
     wire [15:0] regular_oled_data = (mode_select || mode_conflict) ?
                                     (font_row[6 - compact_gx] ? regular_text_color : 16'h0000) :

@@ -35,11 +35,26 @@ module trig_display(
         .char_code(char_code), .row(gy), .bits(font_bits)
     );
 
-    // RGB565 text colors: reddish orange for the digit-conflict warning and
-    // cyan for the pending bottom-left digit.
+    // RGB565 colors: FBE0 = orange, 07FF = cyan, 07E0 = green,
+    // FFE0 = yellow, FFFF = white, and 0000 = black/background.
+    // Yellow is used for function/unit labels; green is used for confirmed
+    // angle digits; cyan is used for the pending bottom-left digit.
     wire [15:0] text_color =
-        (digit_conflict && (row == 4'd6 || row == 4'd7)) ? 16'hFBE0 :
-        ((pending_valid && row == 4'd7 && col == 4'd0) ? 16'h07FF : 16'hFFFF);
+        ((row == 4'd3 &&
+          (undefined || char_code == 6'd34 || // U
+           char_code == 6'd23 ||              // N
+           char_code == 6'd19 ||              // D
+           char_code == 6'd20 ||              // E
+           char_code == 6'd21 ||              // F
+           char_code == 6'd22)) ||            // I
+         (digit_conflict && (row == 4'd6 || row == 4'd7))) ? 16'hFBE0 :
+        ((pending_valid && row == 4'd7 && col == 4'd0) ? 16'h07FF :
+        ((row == 4'd1 && char_code <= 6'd9) ? 16'h07E0 :
+        ((row == 4'd1 && ((col < 4'd3) ||
+                          (char_code == 6'd40) || // CH_DEGREE
+                          (char_code == 6'd32) || // CH_R
+                          (char_code == 6'd16) || // CH_A
+                          (char_code == 6'd19))) ? 16'hFFE0 : 16'hFFFF)));
 
     assign pixel_data = font_bits[7-gx] ? text_color : 16'h0000;
 endmodule
